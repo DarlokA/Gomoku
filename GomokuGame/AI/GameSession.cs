@@ -184,6 +184,7 @@ namespace GomokuGame.AI
 
                     // Для максимально критичных семплов (пропуск победы / видимая угроза) —
                     // размножаем в 4 симметриях для постоянного буфера
+                    // correctionMode == Off: weight = 0.0.В эту ветку не попадем.
                     double[][]? allOrientationStates = null;
                     if (weight >= 5.0)
                     {
