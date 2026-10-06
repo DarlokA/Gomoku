@@ -1,0 +1,14 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/Gomoku/v17
+/.vs
+/GomokuGame/.vs/GomokuGame/v17/TestStore/0
+/GomokuGame/obj
+/GomokuGame.Tests/bin/Debug/net8.0-windows
+/GomokuGame.Tests/obj
+/GomokuGame.Trainer/obj
+/GomokuGame.Trainer/Properties
+/GomokuGame.Visualizer/obj
+/GomokuGame/.vs/GomokuGame/FileContentIndex
