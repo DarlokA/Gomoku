@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GomokuGame.Trainer": {
+      "commandName": "Project",
+      "commandLineArgs": "15 5 100 0.001 0.3 0.9995 42 A network_a_inf 1 standard"
+    }
+  }
+}
