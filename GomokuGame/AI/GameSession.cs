@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using GomokuGame.AI;
 using GomokuGame.Models;
@@ -132,13 +132,15 @@ namespace GomokuGame.AI
                 double weight;
                 bool isForcedCorrection;
 
-                if (missedWin)
+                // Пункт 1: пропущена победа — если режим коррекции не Off
+                if (ai.Correction != AiPlayer.CorrectionMode.Off && missedWin)
                 {
                     sampleToRecord = mostCritical;
                     weight = 5.0;
                     isForcedCorrection = true;
                 }
-                else if (threatWasVisible && !playedCorrectly)
+                // Пункт 2: видна угроза, но не закрыла — если режим коррекции не Off
+                else if (ai.Correction != AiPlayer.CorrectionMode.Off && threatWasVisible && !playedCorrectly)
                 {
                     sampleToRecord = mostCritical;
                     isForcedCorrection = true;

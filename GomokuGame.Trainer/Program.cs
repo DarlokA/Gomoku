@@ -82,6 +82,7 @@ namespace GomokuGame.Trainer
             int chunk = GetArg(args, 11, 500);
             int warmupGames = GetArg(args, 12, 500);
             int snapshotEvery = GetArg(args, 13, 100);
+            string correctionModeStr = args.Length > 14 ? args[14] : "Full";
 
             bool leagueMode = algorithm.Equals("league", StringComparison.OrdinalIgnoreCase);
 
@@ -163,6 +164,14 @@ namespace GomokuGame.Trainer
                 _ => LearningMode.DiscountedWithShaping
             };
 
+            ai.Correction = correctionModeStr.ToUpperInvariant() switch
+            {
+                "FULL" => CorrectionMode.Full,
+                "ONCE" => CorrectionMode.Once,
+                "OFF" => CorrectionMode.Off,
+                _ => CorrectionMode.Full
+            };
+
             Console.WriteLine("=== GomokuGame Trainer / TRAIN ===");
             Console.WriteLine($"Board:   {boardSize}x{boardSize}");
             Console.WriteLine($"Win len: {winLength}");
@@ -171,6 +180,7 @@ namespace GomokuGame.Trainer
             Console.WriteLine($"Epsilon: {ai.Epsilon} (min 0.1, decay {decay})");
             Console.WriteLine($"Seed:    {seed}");
             Console.WriteLine($"Mode:    {ai.Mode}");
+            Console.WriteLine($"Correction: {ai.Correction}");
             Console.WriteLine($"Chunk:    {chunk}");
             Console.WriteLine($"Algorithm: {algorithm}");
             if (leagueMode)

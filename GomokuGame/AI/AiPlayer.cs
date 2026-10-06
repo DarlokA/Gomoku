@@ -24,6 +24,13 @@ namespace GomokuGame.AI
 
         }
 
+        public enum CorrectionMode
+        {
+            Full,   // как сейчас: override + запись в буфер + TrainMix
+            Once,   // override остаётся, но в буфер не кладём
+            Off     // override полностью отключён
+        }
+
 
         public NeuralNetwork Network { get; set; }
         private readonly Random _rng;
@@ -321,6 +328,8 @@ namespace GomokuGame.AI
 
         public LearningMode Mode { get; set; } = LearningMode.DiscountedWithShaping;
 
+        public CorrectionMode Correction { get; set; } = CorrectionMode.Full;
+
         public double Discount { get; set; } = 0.9;
 
         public double LearnFromGame(CellState winner, int winLength)
@@ -358,7 +367,7 @@ namespace GomokuGame.AI
                     new[] { target },
                     effectiveLr);
 
-                if (move.AllOrientationStates != null)
+                if (move.AllOrientationStates != null && Correction == CorrectionMode.Full)
                 {
                     criticalCountThisGame++;
                     long key = CriticalSampleBuffer.ComputeKey(move.AllOrientationStates[0]);
