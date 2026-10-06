@@ -1,0 +1,89 @@
+﻿<Window x:Class="GomokuGame.Visualizer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:GomokuGame.Visualizer"
+        mc:Ignorable="d"
+        Title="GomokuGame Visualizer" Height="620" Width="680"
+        SizeToContent="WidthAndHeight">
+	<Grid Margin="10">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<!-- Загрузка сети -->
+		<StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+			<Button Content="Загрузить сеть..." Padding="8,3" Command="{Binding LoadNetworkCommand}"/>
+			<TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+		</StackPanel>
+
+		<!-- Целевой выход -->
+		<StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+			<TextBlock Text="Целевой выход:" VerticalAlignment="Center" Width="110"/>
+			<Slider Minimum="0" Maximum="1" Width="300" VerticalAlignment="Center"
+                     Value="{Binding Target, Mode=TwoWay}"/>
+			<TextBox Width="60" Margin="8,0,0,0" VerticalAlignment="Center"
+                     Text="{Binding Target, Mode=TwoWay, StringFormat=F3, UpdateSourceTrigger=PropertyChanged}"/>
+		</StackPanel>
+
+		<!-- Управление подбором -->
+		<StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
+			<Button Content="Подобрать вход" Padding="8,3" Command="{Binding ReconstructCommand}"/>
+			<Button Content="Новый случайный старт" Padding="8,3" Margin="8,0,0,0" Command="{Binding RestartCommand}"/>
+		</StackPanel>
+		<!-- Параметры подбора входа -->
+		<StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
+			<TextBlock Text="Макс. итераций:" VerticalAlignment="Center" Width="110"/>
+			<Slider Minimum="100" Maximum="5000" TickFrequency="100" IsSnapToTickEnabled="True"
+             Width="300" VerticalAlignment="Center"
+             Value="{Binding Settings.MaxIterations, Mode=TwoWay}"/>
+			<TextBox Width="60" Margin="8,0,0,0" VerticalAlignment="Center"
+             Text="{Binding Settings.MaxIterations, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+		</StackPanel>
+
+		<StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,8">
+			<TextBlock Text="Learning rate:" VerticalAlignment="Center" Width="110"/>
+			<Slider Minimum="0.01" Maximum="2" Width="300" VerticalAlignment="Center"
+             Value="{Binding Settings.LearningRate, Mode=TwoWay}"/>
+			<TextBox Width="60" Margin="8,0,0,0" VerticalAlignment="Center"
+             Text="{Binding Settings.LearningRate, Mode=TwoWay, StringFormat=F3, UpdateSourceTrigger=PropertyChanged}"/>
+		</StackPanel>
+		<!-- Четыре панели 9x9 -->
+		<Grid Grid.Row="5">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"/>
+				<RowDefinition Height="Auto"/>
+			</Grid.RowDefinitions>
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="Auto"/>
+			</Grid.ColumnDefinitions>
+
+			<StackPanel Grid.Row="0" Grid.Column="0" Margin="4">
+				<TextBlock Text="Все слои" FontWeight="Bold" Margin="0,0,0,4"/>
+				<Canvas x:Name="CanvasAll" Background="White"/>
+			</StackPanel>
+
+			<StackPanel Grid.Row="0" Grid.Column="1" Margin="4">
+				<TextBlock Text="Свои фишки" FontWeight="Bold" Margin="0,0,0,4"/>
+				<Canvas x:Name="CanvasOwn" Background="White"/>
+			</StackPanel>
+
+			<StackPanel Grid.Row="1" Grid.Column="0" Margin="4">
+				<TextBlock Text="Чужие фишки" FontWeight="Bold" Margin="0,0,0,4"/>
+				<Canvas x:Name="CanvasOpponent" Background="White"/>
+			</StackPanel>
+
+			<StackPanel Grid.Row="1" Grid.Column="1" Margin="4">
+				<TextBlock Text="Границы поля" FontWeight="Bold" Margin="0,0,0,4"/>
+				<Canvas x:Name="CanvasBorder" Background="White"/>
+			</StackPanel>
+		</Grid>
+	</Grid>
+</Window>
