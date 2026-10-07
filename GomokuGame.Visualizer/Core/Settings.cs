@@ -12,6 +12,8 @@ namespace GomokuGame.Visualizer.Core
         private int _maxIterations = 500;
         private double _tolerance = 0.001;
         private int _maxAttempts = 5;
+        private int _aggregationN = 20;
+        private bool _onlyOneStart = true;
 
         public double LearningRate
         {
@@ -35,6 +37,18 @@ namespace GomokuGame.Visualizer.Core
         {
             get => _maxAttempts;
             set { _maxAttempts = value; OnPropertyChanged(); }
+        }
+
+        public int AggregationN
+        {
+            get => _aggregationN;
+            set { _aggregationN = value; OnPropertyChanged(); }
+        }
+
+        public bool OnlyOneStart
+        {
+            get => _onlyOneStart;
+            set { _onlyOneStart = value; OnPropertyChanged(); }
         }
 
         private static string FolderPath =>

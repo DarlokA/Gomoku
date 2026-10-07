@@ -7,6 +7,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using static GomokuGame.Visualizer.Core.InputReconstructor;
 namespace GomokuGame.Visualizer
 {
     public class MainViewModel : INotifyPropertyChanged
@@ -52,8 +53,8 @@ namespace GomokuGame.Visualizer
             Settings.PropertyChanged += (_, _) => Settings.Save();
 
             LoadNetworkCommand = new RelayCommand(_ => LoadNetwork());
-            ReconstructCommand = new RelayCommand(_ => RunReconstruction(autoRetry: true), _ => IsNetworkLoaded);
-            RestartCommand = new RelayCommand(_ => RunReconstruction(autoRetry: false, forceNewSeed: true), _ => IsNetworkLoaded);
+            ReconstructCommand = new RelayCommand(async _ => await RunReconstructionAsync(autoRetry: true), _ => IsNetworkLoaded);
+            RestartCommand = new RelayCommand(async _ => await RunReconstructionAsync(autoRetry: false, forceNewSeed: true), _ => IsNetworkLoaded);
             SaveSettingsCommand = new RelayCommand(_ => Settings.Save());
         }
 
@@ -92,31 +93,60 @@ namespace GomokuGame.Visualizer
             }
         }
 
-        private void RunReconstruction(bool autoRetry, bool forceNewSeed = false)
+        private async Task RunReconstructionAsync(bool autoRetry, bool forceNewSeed = false)
         {
             if (_network == null) return;
 
             Status = "Подбираю вход...";
 
+            // Progress<T> создаётся на UI-потоке — его callback сам придёт в UI-поток,
+            // ручной Dispatcher.Invoke тут не нужен.
+            var progress = new Progress<InputReconstructor.AggregationResult>(p =>
+            {
+                LastResult = new ReconstructionResult(p.Probs, Target, 0, p.ConvergedCount > 0);
+                Status = $"Агрегация: сошлось {p.ConvergedCount} из {p.TotalAttempts}...";
+            });
+
+            var network = _network;
+            double target = Target;
+            var settings = Settings;
             ReconstructionResult? result;
+
             if (autoRetry)
             {
-                result = InputReconstructor.ReconstructWithRetries(
-                    _network, Target,
-                    maxAttempts: Settings.MaxAttempts,
-                    maxIterations: Settings.MaxIterations,
-                    learningRate: Settings.LearningRate,
-                    tolerance: Settings.Tolerance);
+                if (!settings.OnlyOneStart)
+                {
+                    var aggResult = await Task.Run(() => InputReconstructor.ReconstructAggregate(
+                        network, target,
+                        attempts: settings.AggregationN,
+                        maxIterations: settings.MaxIterations,
+                        learningRate: settings.LearningRate,
+                        tolerance: settings.Tolerance,
+                        progress: progress));
+
+                    result = new ReconstructionResult(aggResult.Probs, target, 0, aggResult.ConvergedCount > 0);
+                    Status = $"Агрегация: сошлось {aggResult.ConvergedCount} из {aggResult.TotalAttempts}";
+                }
+                else
+                {
+                    result = await Task.Run(() => InputReconstructor.ReconstructWithRetries(
+                        network, target,
+                        maxAttempts: settings.MaxAttempts,
+                        maxIterations: settings.MaxIterations,
+                        learningRate: settings.LearningRate,
+                        tolerance: settings.Tolerance));
+                }
             }
             else
             {
                 _restartSeed++;
-                result = InputReconstructor.Reconstruct(
-                    _network, Target,
-                    maxIterations: Settings.MaxIterations,
-                    learningRate: Settings.LearningRate,
-                    tolerance: Settings.Tolerance,
-                    seed: _restartSeed);
+                int seed = _restartSeed;
+                result = await Task.Run(() => InputReconstructor.Reconstruct(
+                    network, target,
+                    maxIterations: settings.MaxIterations,
+                    learningRate: settings.LearningRate,
+                    tolerance: settings.Tolerance,
+                    seed: seed));
             }
 
             LastResult = result;
@@ -127,11 +157,15 @@ namespace GomokuGame.Visualizer
 
             if (result != null)
             {
-                ReconstructionLogger.Append(logPath, Path.GetFileNameWithoutExtension(_networkPath), Target,
+                ReconstructionLogger.Append(logPath, Path.GetFileNameWithoutExtension(_networkPath), target,
                                                 autoRetry ? -1 : _restartSeed, result);
-                Status = result.Converged
-                        ? $"Сошлось за {result.Iterations} итераций, выход = {result.FinalOutput:F4}"
-                        : $"Не сошлось (лучший выход = {result.FinalOutput:F4}), попробуй другой старт";
+
+                // Для одиночных режимов — старый формат статуса.
+                // Для агрегации финальный статус уже выставлен выше — не перетираем его.
+                if (!autoRetry || settings.OnlyOneStart)
+                    Status = result.Converged
+                            ? $"Сошлось за {result.Iterations} итераций, выход = {result.FinalOutput:F4}"
+                            : $"Не сошлось (лучший выход = {result.FinalOutput:F4}), попробуй другой старт";
             }
             else
                 Status = $"result == null!!!";

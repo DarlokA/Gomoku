@@ -34,6 +34,80 @@ namespace GomokuGame.Visualizer.Core
         private const int ChannelStride = Cells;
         private const int CenterCell = StateEncoder.Half * StateEncoder.WindowSize + StateEncoder.Half; // 40
 
+
+        #region AggregationResult
+        /// <summary>
+        /// Результат агрегации по нескольким независимым запускам реконструкции.
+        /// ConvergedCount/TotalAttempts — мера доверия к усреднённому результату.
+        /// </summary>
+        public class AggregationResult
+        {
+            public double[][] Probs { get; }
+            public int ConvergedCount { get; }
+            public int TotalAttempts { get; }
+
+            public AggregationResult(double[][] probs, int convergedCount, int totalAttempts)
+            {
+                Probs = probs;
+                ConvergedCount = convergedCount;
+                TotalAttempts = totalAttempts;
+            }
+        }
+
+        public static AggregationResult ReconstructAggregate(
+            NeuralNetwork? net,
+            double target,
+            int attempts = 20,
+            int maxIterations = 500,
+            double learningRate = 0.5,
+            double tolerance = 0.001,
+            IProgress<AggregationResult>? progress = null)
+        {
+            var sum = new double[Cells][];
+            for (int cell = 0; cell < Cells; cell++)
+                sum[cell] = new double[3];
+
+            int convergedCount = 0;
+
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
+                var result = Reconstruct(net, target, maxIterations, learningRate, tolerance, seed: attempt);
+                if (!result.Converged) continue; // несошедшиеся отбрасываем целиком
+
+                convergedCount++;
+                for (int cell = 0; cell < Cells; cell++)
+                    for (int ch = 0; ch < 3; ch++)
+                        sum[cell][ch] += result.Probs[cell][ch];
+
+                if (progress != null)
+                {
+                    // Снимок текущего усреднения — это и будет "кадр" анимации
+                    var snapshot = new double[Cells][];
+                    for (int cell = 0; cell < Cells; cell++)
+                    {
+                        snapshot[cell] = new double[3];
+                        for (int ch = 0; ch < 3; ch++)
+                            snapshot[cell][ch] = sum[cell][ch] / convergedCount;
+                    }
+                    progress.Report(new AggregationResult(snapshot, convergedCount, attempt + 1));
+                }
+            }
+
+            var avg = new double[Cells][];
+            for (int cell = 0; cell < Cells; cell++)
+            {
+                avg[cell] = new double[3];
+                if (convergedCount > 0)
+                    for (int ch = 0; ch < 3; ch++)
+                        avg[cell][ch] = sum[cell][ch] / convergedCount;
+            }
+
+            return new AggregationResult(avg, convergedCount, attempts);
+        }
+        #endregion
+
+
+
         public static ReconstructionResult Reconstruct(
             NeuralNetwork? net,
             double target,
