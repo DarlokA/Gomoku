@@ -28,7 +28,8 @@ namespace GomokuGame.AI
         {
             Full,   // как сейчас: override + запись в буфер + TrainMix
             Once,   // override остаётся, но в буфер не кладём
-            Off     // override полностью отключён
+            Off,    // override полностью отключён
+            All     // override + запись в буфер + ПОЛНЫЙ прогон всего буфера каждую партию
         }
 
 
@@ -352,6 +353,7 @@ namespace GomokuGame.AI
             }
 
             int criticalCountThisGame = 0;
+            bool reverseOrder = (EpisodesTrained % 2) == 1;
 
             for (int i = 0; i < _gameHistory.Count; i++)
             {
@@ -362,10 +364,16 @@ namespace GomokuGame.AI
                 if (move.AllOrientationStates != null)
                 {
                     // Гарантированный x4: та же target на всех 4 поворотах одной позиции.
+                    // Чередуем порядок обхода по чётности партии, чтобы одна и та же
+                    // ориентация не оказывалась систематически "последней" на общих весах.
                     double sumLoss = 0;
-                    for (int ori = 0; ori < move.AllOrientationStates.Length; ori++)
+                    int n = move.AllOrientationStates.Length;
+                    for (int k = 0; k < n; k++)
+                    {
+                        int ori = reverseOrder ? n - 1 - k : k;
                         sumLoss += Network.TrainOnExample(move.AllOrientationStates[ori], new[] { target }, effectiveLr);
-                    totalLoss += sumLoss / move.AllOrientationStates.Length;
+                    }
+                    totalLoss += sumLoss / n;
                 }
                 else
                 {
@@ -375,7 +383,7 @@ namespace GomokuGame.AI
 
                 // В постоянный буфер — только по явному флагу критичности,
                 // а не по тому, посчитаны ли 4 ориентации (теперь они есть у всех).
-                if (move.IsCritical && Correction == CorrectionMode.Full)
+                if (move.IsCritical && (Correction == CorrectionMode.Full || Correction == CorrectionMode.All))
                 {
                     criticalCountThisGame++;
                     long key = CriticalSampleBuffer.ComputeKey(move.AllOrientationStates![0]);
@@ -383,9 +391,12 @@ namespace GomokuGame.AI
                 }
             }
 
-            // Подмешиваем повторение старых критичных семплов — не больше,
-            // чем вдвое больше критичных семплов этой партии
-            CriticalBuffer.TrainMix(Network, LearningRate, criticalCountThisGame * 2);
+            // Full/Once/Off — дозированная подмесь, как раньше.
+            // All — принудительный проход по ВСЕМУ текущему буферу каждую партию.
+            int mixCount = Correction == CorrectionMode.All
+                            ? CriticalBuffer.BufferSize
+                            : criticalCountThisGame * 2;
+            CriticalBuffer.TrainMix(Network, LearningRate, mixCount, reverseOrder);
 
             _gameHistory.Clear();
             LastAverageLoss = totalLoss / count;

@@ -168,6 +168,7 @@ namespace GomokuGame.Trainer
                 "FULL" => CorrectionMode.Full,
                 "ONCE" => CorrectionMode.Once,
                 "OFF" => CorrectionMode.Off,
+                "ALL" => CorrectionMode.All,
                 _ => CorrectionMode.Full
             };
 

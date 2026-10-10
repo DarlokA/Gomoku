@@ -118,7 +118,7 @@ namespace GomokuGame.AI
         /// тренирует на всех 4 симметриях каждой записи, обновляет счётчик успешных
         /// проверок по средней ошибке и удаляет записи, которые сеть выучила устойчиво.
         /// </summary>
-        public void TrainMix(NeuralNetwork network, double baseLearningRate, int sampleCount)
+        public void TrainMix(NeuralNetwork network, double baseLearningRate, int sampleCount, bool reverseOrientationOrder = false)
         {
             if (_byKey.Count == 0 || sampleCount <= 0) return;
 
@@ -141,14 +141,16 @@ namespace GomokuGame.AI
 
                 double effectiveLr = baseLearningRate * sample.Weight;
                 double totalError = 0;
-                for (int o = 0; o < sample.States.Length; o++)
+                int n = sample.States.Length;
+                for (int k = 0; k < n; k++)
                 {
+                    int o = reverseOrientationOrder ? n - 1 - k : k;
                     totalError += network.TrainOnExample(
                         sample.States[o],
                         new[] { sample.Target },
                         effectiveLr);
                 }
-                double avgError = totalError / sample.States.Length;
+                double avgError = totalError / n;
 
                 if (avgError < GoodErrorThreshold)
                 {

@@ -18,7 +18,7 @@ namespace GomokuGame.ViewModels
 
         public List<string> Modes { get; } = new() { "A", "B", "C", "D" };
         public List<string> Algorithms { get; } = new() { "standard", "bot", "league" };
-        public List<string> CorrectionModes { get; } = new() { "FULL", "ONCE", "OFF" };
+        public List<string> CorrectionModes { get; } = new() { "FULL", "ONCE", "OFF", "ALL" };
         public List<string> AvailableNetworks { get; }
 
         // --- Train / Match ---
