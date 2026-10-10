@@ -1,4 +1,4 @@
-﻿using GomokuGame.Models;
+using GomokuGame.Models;
 using GomokuGame.Services;
 using System;
 using System.Collections.Generic;
@@ -18,7 +18,7 @@ namespace GomokuGame.ViewModels
 
         public List<string> Modes { get; } = new() { "A", "B", "C", "D" };
         public List<string> Algorithms { get; } = new() { "standard", "bot", "league" };
-
+        public List<string> CorrectionModes { get; } = new() { "FULL", "ONCE", "OFF" };
         public List<string> AvailableNetworks { get; }
 
         // --- Train / Match ---
@@ -127,6 +127,17 @@ namespace GomokuGame.ViewModels
             }
         }
 
+        private string _correctionMode = "FULL";
+        public string CorrectionMode
+        {
+            get => _correctionMode;
+            set
+            {
+                if (SetProperty(ref _correctionMode, value))
+                    UpdatePreview();
+            }
+        }
+
         public bool IsLeagueMode => Algorithm == "league";
 
         // --- Match-параметры ---
@@ -230,7 +241,7 @@ namespace GomokuGame.ViewModels
             }
             else
             {
-                // [boardSize] [winLength] [games] [lr] [epsilon] [decay] [seed] [mode] [saveName] [showDemo] [algorithm]
+                // [boardSize] [winLength] [games] [lr] [epsilon] [decay] [seed] [mode] [saveName] [showDemo] [algorithm] [chunk] [warmupGames] [snapshotEvery] [correctionMode]
                 args.Add(BoardSize.ToString(ci));
                 args.Add(WinLength.ToString(ci));
                 args.Add(IsInfinite ? "0" : Games.ToString(ci));
@@ -245,6 +256,7 @@ namespace GomokuGame.ViewModels
                 args.Add(Chunk.ToString(ci));
                 args.Add(WarmupGames.ToString(ci));
                 args.Add(SnapshotEvery.ToString(ci));
+                args.Add(CorrectionMode);
             }
             return args;
         }

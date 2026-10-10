@@ -104,6 +104,10 @@
 						<ComboBox Width="140" ItemsSource="{Binding Algorithms}" SelectedItem="{Binding Algorithm}"/>
 					</StackPanel>
 					<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+						<TextBlock Text="Коррекция:" Width="110" VerticalAlignment="Center"/>
+						<ComboBox Width="140" ItemsSource="{Binding CorrectionModes}" SelectedItem="{Binding CorrectionMode}"/>
+					</StackPanel>
+					<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
 						<TextBlock Text="Имя сети:" Width="110" VerticalAlignment="Center"/>
 						<TextBox Width="160" Text="{Binding SaveName, UpdateSourceTrigger=PropertyChanged}"/>
 					</StackPanel>
