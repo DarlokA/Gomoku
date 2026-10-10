@@ -224,12 +224,7 @@ namespace GomokuGame.AI
                 return empties[_rng.Next(empties.Count)];
             }
 
-            // Аугментация симметрии: один случайный поворот окна на весь ход.
-            // Раньше тут жёстко стоял orientation=0 — сеть видела игру всегда
-            // в одной системе координат и со временем смещалась в сторону
-            // горизонтальных линий. Теперь состояние для обучения кодируется
-            // в случайной из 4 ориентаций, как уже сделано в PlayOneGameAgainstFixed.
-            int orientation = _rng.Next(4);
+            int orientation = 0;
 
             MoveCandidate? best = null;
             double bestValue = double.NegativeInfinity;
@@ -238,7 +233,7 @@ namespace GomokuGame.AI
 
             foreach (var (r, c) in empties)
             {
-                var state = StateEncoder.Encode(board, r, c, me);
+                var state = StateEncoder.Encode(board, r, c, me, orientation);
                 double value = EvaluateMove(board, r, c, me);
                 double criticality = MoveCriticality.ComputeCriticalityForMove(board, r, c, me, board.WinLength);
 
