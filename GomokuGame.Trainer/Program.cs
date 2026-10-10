@@ -74,7 +74,7 @@ namespace GomokuGame.Trainer
             double lr = GetArgDouble(args, 3, 0.001);
             double epsilon = GetArgDouble(args, 4, 0.3);
             double decay = GetArgDouble(args, 5, 0.9995);
-            int seed = GetArg(args, 6, 42);
+            int seed = GetArg(args, 6, 42);//Больше не используется оставлен для обратной совместимости.
             string modeStr = args.Length > 7 ? args[7] : "C";
             string saveName = args.Length > 8 ? args[8] : "network";
             bool showDemo = GetArg(args, 9, 1) == 1;
@@ -86,7 +86,6 @@ namespace GomokuGame.Trainer
 
             bool leagueMode = algorithm.Equals("league", StringComparison.OrdinalIgnoreCase);
 
-            GameSession.SetSeed(seed);   // установить seed для аугментации
 
             string savePath = GetSavePath(saveName);
             bool continuing = File.Exists(savePath);

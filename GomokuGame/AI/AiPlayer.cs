@@ -285,7 +285,8 @@ namespace GomokuGame.AI
             double criticalityWeight,
             double criticality = 0.0,
             bool isForcedCorrection = false,
-            double[][]? allOrientationStates = null)
+            double[][]? allOrientationStates = null,
+            bool isCritical = false)
         {
             _gameHistory.Add(new MoveRecord(stateBefore, row, col, player)
             {
@@ -295,7 +296,8 @@ namespace GomokuGame.AI
                 CriticalityWeight = criticalityWeight,
                 Criticality = criticality,
                 IsForcedCorrection = isForcedCorrection,
-                AllOrientationStates = allOrientationStates
+                AllOrientationStates = allOrientationStates,
+                IsCritical = isCritical
             });
         }
 
@@ -357,15 +359,26 @@ namespace GomokuGame.AI
                 double target = ComputeTarget(move, i, lastWinnerIdx, winner);
                 double effectiveLr = LearningRate * move.CriticalityWeight;
 
-                totalLoss += Network.TrainOnExample(
-                    move.State,
-                    new[] { target },
-                    effectiveLr);
+                if (move.AllOrientationStates != null)
+                {
+                    // Гарантированный x4: та же target на всех 4 поворотах одной позиции.
+                    double sumLoss = 0;
+                    for (int ori = 0; ori < move.AllOrientationStates.Length; ori++)
+                        sumLoss += Network.TrainOnExample(move.AllOrientationStates[ori], new[] { target }, effectiveLr);
+                    totalLoss += sumLoss / move.AllOrientationStates.Length;
+                }
+                else
+                {
+                    // Страховка на случай сэмплов без ориентаций (например, из других путей обучения).
+                    totalLoss += Network.TrainOnExample(move.State, new[] { target }, effectiveLr);
+                }
 
-                if (move.AllOrientationStates != null && Correction == CorrectionMode.Full)
+                // В постоянный буфер — только по явному флагу критичности,
+                // а не по тому, посчитаны ли 4 ориентации (теперь они есть у всех).
+                if (move.IsCritical && Correction == CorrectionMode.Full)
                 {
                     criticalCountThisGame++;
-                    long key = CriticalSampleBuffer.ComputeKey(move.AllOrientationStates[0]);
+                    long key = CriticalSampleBuffer.ComputeKey(move.AllOrientationStates![0]);
                     CriticalBuffer.AddOrUpdate(move.AllOrientationStates, target, move.CriticalityWeight, key);
                 }
             }

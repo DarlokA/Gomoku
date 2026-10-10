@@ -62,20 +62,6 @@ namespace GomokuGame.AI
     {
 
         /// <summary>
-        /// Единый Random для аугментации ориентаций.
-        /// Управляется через SetSeed() для воспроизводимости.
-        /// </summary>
-        private static Random _orientationRng = new Random(42);
-
-        /// <summary>
-        /// Установить seed для воспроизводимости.
-        /// Вызывать перед началом обучения.
-        /// </summary>
-        public static void SetSeed(int seed)
-        {
-            _orientationRng = new Random(seed);
-        }
-        /// <summary>
         /// Сыграть одну партию AI vs AI с обучением.
         /// </summary>
         public static GameResult PlayOneGame(
@@ -184,16 +170,14 @@ namespace GomokuGame.AI
                     double sampleOppPotential = board.GetMaxPotential(opponent, winLength);
                     board[sr, sc] = CellState.Empty;
 
-                    // Для максимально критичных семплов (пропуск победы / видимая угроза) —
-                    // размножаем в 4 симметриях для постоянного буфера
-                    // correctionMode == Off: weight = 0.0.В эту ветку не попадем.
-                    double[][]? allOrientationStates = null;
-                    if (weight >= 5.0)
-                    {
-                        allOrientationStates = new double[4][];
-                        for (int ori = 0; ori < 4; ori++)
-                            allOrientationStates[ori] = StateEncoder.Encode(board, sr, sc, current, ori);
-                    }
+                    // Гарантированный x4: теперь для ЛЮБОГО сэмпла, не только критичного.
+                    // isCritical отдельно решает, идёт ли он в постоянный CriticalBuffer —
+                    // буфер должен оставаться редким, а не раздуваться обычными ходами.
+                    var allOrientationStates = new double[4][];
+                    for (int ori = 0; ori < 4; ori++)
+                        allOrientationStates[ori] = StateEncoder.Encode(board, sr, sc, current, ori);
+
+                    bool isCritical = weight >= 5.0;
 
                     ai.RecordMoveWithWeight(
                         sampleToRecord.State,
@@ -205,7 +189,8 @@ namespace GomokuGame.AI
                         weight,
                         criticality: sampleToRecord.Criticality,
                         isForcedCorrection: isForcedCorrection,
-                        allOrientationStates);
+                        allOrientationStates: allOrientationStates,
+                        isCritical: isCritical);
                 }
 
                 // === Реальный ход ===
@@ -488,13 +473,16 @@ namespace GomokuGame.AI
 
                 var (row, col) = move.Value;
 
-                double[]? stateBefore = null;
+                // Гарантированный x4, как и в PlayOneGame — вместо одной случайной
+                // ориентации кодируем все 4 поворота этой позиции заранее,
+                // пока клетка (row, col) ещё пустая.
+                double[][]? allOrientationStates = null;
                 if (isLearner)
                 {
-                    int orientation = _orientationRng.Next(4);
-                    stateBefore = StateEncoder.Encode(board, row, col, current, orientation);
+                    allOrientationStates = new double[4][];
+                    for (int ori = 0; ori < 4; ori++)
+                        allOrientationStates[ori] = StateEncoder.Encode(board, row, col, current, ori);
                 }
-                
 
                 board[row, col] = current;
                 moves++;
@@ -506,8 +494,16 @@ namespace GomokuGame.AI
                     var opponent = current == CellState.X ? CellState.O : CellState.X;
                     double oppPotential = board.GetMaxPotential(opponent, winLength);
 
-                    learner.RecordMove(stateBefore!, row, col, current,
-                                       lineLen, myPotential, oppPotential);
+                    // RecordMoveWithWeight вместо RecordMove: criticalityWeight: 1.0 даёт
+                    // тот же эффективный learning rate, что и прежний RecordMove по умолчанию —
+                    // меняется только набор ориентаций, не сила обучения.
+                    learner.RecordMoveWithWeight(
+                        allOrientationStates![0],
+                        row, col, current,
+                        lineLen, myPotential, oppPotential,
+                        criticalityWeight: 1.0,
+                        allOrientationStates: allOrientationStates,
+                        isCritical: false);   // в League-режиме нет критического буфера — сохраняем как было
                 }
 
                 var winLine = board.GetWinningLine(row, col, current);
@@ -664,11 +660,11 @@ namespace GomokuGame.AI
         /// Обучается только learner. Ходы бота в историю learner не пишутся.
         /// </summary>
         public static GameResult PlayOneGameAgainstBot(
-            AiPlayer learner,
-            RotatingBot bot,
-            CellState learnerPlays,
-            int boardSize,
-            int winLength)
+                            AiPlayer learner,
+                            RotatingBot bot,
+                            CellState learnerPlays,
+                            int boardSize,
+                            int winLength)
         {
             learner.ResetHistory();
 
@@ -690,13 +686,16 @@ namespace GomokuGame.AI
 
                 var (row, col) = move.Value;
 
-                double[]? stateBefore = null;
+                // Гарантированный x4: вместо одной случайной ориентации кодируем
+                // все 4 поворота позиции заранее, пока клетка ещё пустая.
+                double[][]? allOrientationStates = null;
                 if (isLearner)
                 {
-                    int orientation = _orientationRng.Next(4);
-                    stateBefore = StateEncoder.Encode(board, row, col, current, orientation);   // случайный поворот — для симметричного обучения
+                    allOrientationStates = new double[4][];
+                    for (int ori = 0; ori < 4; ori++)
+                        allOrientationStates[ori] = StateEncoder.Encode(board, row, col, current, ori);
                 }
-                
+
                 board[row, col] = current;
                 moves++;
 
@@ -707,8 +706,15 @@ namespace GomokuGame.AI
                     var opponent = current == CellState.X ? CellState.O : CellState.X;
                     double oppPotential = board.GetMaxPotential(opponent, winLength);
 
-                    learner.RecordMove(stateBefore!, row, col, current,
-                                       lineLen, myPotential, oppPotential);
+                    // RecordMoveWithWeight вместо RecordMove: criticalityWeight: 1.0 даёт
+                    // тот же эффективный learning rate, что и прежний RecordMove по умолчанию.
+                    learner.RecordMoveWithWeight(
+                        allOrientationStates![0],
+                        row, col, current,
+                        lineLen, myPotential, oppPotential,
+                        criticalityWeight: 1.0,
+                        allOrientationStates: allOrientationStates,
+                        isCritical: false);
                 }
 
                 var winLine = board.GetWinningLine(row, col, current);

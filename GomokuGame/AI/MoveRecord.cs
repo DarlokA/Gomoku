@@ -29,8 +29,11 @@ namespace GomokuGame.AI
         /// </summary>
         public double CriticalityWeight { get; set; } = 1.0;
 
-        /// <summary>Заполнено только для критичных семплов (вес 5.0) — 4 симметрии для буфера.</summary>
+        /// <summary>Заполнено для ВСЕХ семплов обучения — 4 симметрии для гарантированного x4.</summary>
         public double[][]? AllOrientationStates { get; set; }
+
+        /// <summary>true только для редких критичных ходов (вес ≥ 5.0) — идёт в постоянный CriticalBuffer.</summary>
+        public bool IsCritical { get; set; } = false;
 
         public MoveRecord(double[] state, int row, int col, CellState player)
         {
