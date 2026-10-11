@@ -122,6 +122,153 @@ namespace GomokuGame.Models
         }
 
         /// <summary>
+        /// Подсчёт фишек player в направлении (dRow,dCol) от (row,col) с допуском РОВНО
+        /// одного одноклеточного разрыва (пустая клетка, за которой снова идёт player).
+        /// Count — число фишек player без самого разрыва, Steps — расстояние до последней
+        /// учтённой фишки (нужно для поиска свободного конца за линией), GapRow/GapCol —
+        /// координаты разрыва или (-1,-1), если разрыва не было.
+        /// </summary>
+        private (int Count, int Steps, int GapRow, int GapCol) CountDirWithOneGap(
+            int row, int col, int dRow, int dCol, CellState player)
+        {
+            int count = 0, steps = 0;
+            int gapRow = -1, gapCol = -1;
+            bool gapUsed = false;
+
+            int r = row + dRow, c = col + dCol;
+            int step = 1;
+            while (r >= 0 && r < Size && c >= 0 && c < Size)
+            {
+                if (_cells[r, c] == player)
+                {
+                    count++;
+                    steps = step;
+                }
+                else if (_cells[r, c] == CellState.Empty && !gapUsed)
+                {
+                    int nr = r + dRow, nc = c + dCol;
+                    bool nextIsPlayer = nr >= 0 && nr < Size && nc >= 0 && nc < Size && _cells[nr, nc] == player;
+                    if (!nextIsPlayer) break; // обычный свободный конец, не разрыв
+                    gapUsed = true;
+                    gapRow = r;
+                    gapCol = c;
+                }
+                else
+                {
+                    break;
+                }
+                r += dRow;
+                c += dCol;
+                step++;
+            }
+
+            return (count, steps, gapUsed ? gapRow : -1, gapUsed ? gapCol : -1);
+        }
+
+        /// <summary>
+        /// Как GetMaxLineWithOpenEnds, но допускает РОВНО ОДИН одноклеточный разрыв,
+        /// с одной из сторон от (row,col) (не с обеих одновременно) — чтобы ловить
+        /// угрозы вида "X . X X" или "X X . X", которые обычный подрядный подсчёт
+        /// видит как более короткую и менее опасную линию.
+        /// Length == 0, если ни в одном направлении реального разрыва не нашлось.
+        /// </summary>
+        public (int Length, int OpenEnds, int DRow, int DCol, int GapRow, int GapCol) GetMaxLineWithGap(
+            int row, int col, CellState player)
+        {
+            if (row < 0 || row >= Size || col < 0 || col >= Size) return (0, 0, 0, 0, -1, -1);
+            if (_cells[row, col] != player) return (0, 0, 0, 0, -1, -1);
+
+            int[][] dirs = { new[] { 0, 1 }, new[] { 1, 0 }, new[] { 1, 1 }, new[] { 1, -1 } };
+            int bestLen = 0, bestOpen = 0, bestDr = 0, bestDc = 0, bestGapR = -1, bestGapC = -1;
+
+            foreach (var d in dirs)
+            {
+                int dRow = d[0], dCol = d[1];
+
+                int leftPure = CountDir(row, col, -dRow, -dCol, player);
+                int rightPure = CountDir(row, col, dRow, dCol, player);
+
+                var leftGap = CountDirWithOneGap(row, col, -dRow, -dCol, player);
+                var rightGap = CountDirWithOneGap(row, col, dRow, dCol, player);
+
+                // Разрыв допускаем только с одной стороны за раз — вторую считаем
+                // как обычно, чтобы в линии не накопилось два разрыва.
+                Consider(leftGap.Count, leftGap.Steps, rightPure, rightPure, leftGap.GapRow, leftGap.GapCol);
+                Consider(leftPure, leftPure, rightGap.Count, rightGap.Steps, rightGap.GapRow, rightGap.GapCol);
+
+                void Consider(int leftCount, int leftSteps, int rightCount, int rightSteps, int gapRow, int gapCol)
+                {
+                    if (gapRow < 0) return; // эта комбинация реального разрыва не содержит
+
+                    int len = 1 + leftCount + rightCount;
+
+                    int lr = row - dRow * (leftSteps + 1), lc = col - dCol * (leftSteps + 1);
+                    bool leftOpen = lr >= 0 && lr < Size && lc >= 0 && lc < Size && _cells[lr, lc] == CellState.Empty;
+
+                    int rr = row + dRow * (rightSteps + 1), rc = col + dCol * (rightSteps + 1);
+                    bool rightOpen = rr >= 0 && rr < Size && rc >= 0 && rc < Size && _cells[rr, rc] == CellState.Empty;
+
+                    int openEnds = (leftOpen ? 1 : 0) + (rightOpen ? 1 : 0);
+
+                    if (len > bestLen || (len == bestLen && openEnds > bestOpen))
+                    {
+                        bestLen = len; bestOpen = openEnds; bestDr = dRow; bestDc = dCol;
+                        bestGapR = gapRow; bestGapC = gapCol;
+                    }
+                }
+            }
+
+            return (bestLen, bestOpen, bestDr, bestDc, bestGapR, bestGapC);
+        }
+
+        /// <summary>
+        /// Контигуальная + гэп-линия player через (row, col) СТРОГО в направлении (dRow, dCol),
+        /// без переборов по другим направлениям. Нужен для повторной проверки конкретной угрозы
+        /// после хода — чтобы несвязанные "шумовые" направления (одиночный камень с двумя
+        /// пустыми соседями) не перебивали по OpenEnds реальную, уже заблокированную линию.
+        /// </summary>
+        public (int Length, int OpenEnds) GetLineWithGapInDirection(int row, int col, int dRow, int dCol, CellState player)
+        {
+            if (row < 0 || row >= Size || col < 0 || col >= Size) return (0, 0);
+            if (_cells[row, col] != player) return (0, 0);
+
+            int leftPure = CountDir(row, col, -dRow, -dCol, player);
+            int rightPure = CountDir(row, col, dRow, dCol, player);
+
+            int bestLen = 1 + leftPure + rightPure;
+            int lr0 = row - dRow * (leftPure + 1), lc0 = col - dCol * (leftPure + 1);
+            bool leftOpen0 = lr0 >= 0 && lr0 < Size && lc0 >= 0 && lc0 < Size && _cells[lr0, lc0] == CellState.Empty;
+            int rr0 = row + dRow * (rightPure + 1), rc0 = col + dCol * (rightPure + 1);
+            bool rightOpen0 = rr0 >= 0 && rr0 < Size && rc0 >= 0 && rc0 < Size && _cells[rr0, rc0] == CellState.Empty;
+            int bestOpen = (leftOpen0 ? 1 : 0) + (rightOpen0 ? 1 : 0);
+
+            var leftGap = CountDirWithOneGap(row, col, -dRow, -dCol, player);
+            var rightGap = CountDirWithOneGap(row, col, dRow, dCol, player);
+
+            void Consider(int leftCount, int leftSteps, int rightCount, int rightSteps, int gapRow)
+            {
+                if (gapRow < 0) return;
+
+                int len = 1 + leftCount + rightCount;
+                int lr = row - dRow * (leftSteps + 1), lc = col - dCol * (leftSteps + 1);
+                bool leftOpen = lr >= 0 && lr < Size && lc >= 0 && lc < Size && _cells[lr, lc] == CellState.Empty;
+                int rr = row + dRow * (rightSteps + 1), rc = col + dCol * (rightSteps + 1);
+                bool rightOpen = rr >= 0 && rr < Size && rc >= 0 && rc < Size && _cells[rr, rc] == CellState.Empty;
+                int openEnds = (leftOpen ? 1 : 0) + (rightOpen ? 1 : 0);
+
+                if (len > bestLen || (len == bestLen && openEnds > bestOpen))
+                {
+                    bestLen = len; bestOpen = openEnds;
+                }
+            }
+
+            Consider(leftGap.Count, leftGap.Steps, rightPure, rightPure, leftGap.GapRow);
+            Consider(leftPure, leftPure, rightGap.Count, rightGap.Steps, rightGap.GapRow);
+
+            return (bestLen, bestOpen);
+        }
+
+        /// <summary>
         /// Длина максимальной непрерывной линии фишек player, проходящей через (row, col).
         /// Если клетка не принадлежит player — возвращает 0.
         /// </summary>
@@ -132,11 +279,11 @@ namespace GomokuGame.Models
 
             int[][] dirs =
             {
-        new[] { 0, 1 },
-        new[] { 1, 0 },
-        new[] { 1, 1 },
-        new[] { 1, -1 }
-    };
+                    new[] { 0, 1 },
+                    new[] { 1, 0 },
+                    new[] { 1, 1 },
+                    new[] { 1, -1 }
+            };
 
             int maxLen = 1;
             foreach (var d in dirs)

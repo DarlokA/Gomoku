@@ -237,5 +237,54 @@ namespace GomokuGame.Tests
             double c = MoveCriticality.ComputeCriticalityForMove(board, 10, 4, CellState.X, 5);
             Assert.AreEqual(0.9, c, 1e-6);
         }
+
+        [TestMethod]
+        public void ComputeCriticalityForMove_OpponentGapFour_DetectedAsCritical()
+        {
+            // Соперник O имеет O . O O O (дырка на (7,5)). Раньше FindStrongestOpponentLineInWindow
+            // видел это как контигуальную тройку — ниже порога winLength-2=3... на самом деле
+            // длина 3 уже проходит порог "L-2" при winLength=5, поэтому для надёжной проверки
+            // бага берём паттерн покороче по контигуальному счёту: O . O O (длина по дырке = 3,
+            // контигуально справа только 2) — именно такой случай раньше не долетал до критики.
+            var board = new GameBoard(15, 5);
+            board[7, 4] = CellState.O;
+            board[7, 6] = CellState.O;
+            board[7, 7] = CellState.O;
+
+            // Ход X в (7,5) — прямо в разрыв, корректный защитный ход.
+            double weight = MoveCriticality.ComputeCriticalityForMove(board, 7, 5, CellState.X, 5);
+
+            Assert.AreEqual(0.9, weight, 0.0001);
+        }
+
+        [TestMethod]
+        public void ComputeCriticalityForMove_OpponentGapFour_UnrelatedCellStaysZero()
+        {
+            // та же угроза, но ход в клетку, не относящуюся к этой линии вообще —
+            // критичность должна остаться 0, а не ложно сработать от самого наличия gap-угрозы
+            var board = new GameBoard(15, 5);
+            board[7, 4] = CellState.O;
+            board[7, 6] = CellState.O;
+            board[7, 7] = CellState.O;
+
+            double weight = MoveCriticality.ComputeCriticalityForMove(board, 0, 0, CellState.X, 5);
+
+            Assert.AreEqual(0.0, weight, 0.0001);
+        }
+
+        [TestMethod]
+        public void ComputeCriticalityForMove_OpponentGapFour_BlockingOpenEndAlsoCritical()
+        {
+            // тот же паттерн, но защита не через дырку, а через блокировку открытого конца справа (7,8) —
+            // after.OpenEnds должен уменьшиться точно так же, через gap-версию линии
+            var board = new GameBoard(15, 5);
+            board[7, 4] = CellState.O;
+            board[7, 6] = CellState.O;
+            board[7, 7] = CellState.O;
+
+            double weight = MoveCriticality.ComputeCriticalityForMove(board, 7, 8, CellState.X, 5);
+
+            Assert.AreEqual(0.9, weight, 0.0001);
+        }
     }
 }

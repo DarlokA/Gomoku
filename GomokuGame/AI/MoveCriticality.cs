@@ -50,11 +50,11 @@ namespace GomokuGame.AI
         /// Мёртвые линии (OpenEnds == 0) игнорируются — они не угроза.
         /// Возвращает (Length, OpenEnds, Row, Col) — координаты опорной клетки.
         /// </summary>
-        private static (int Length, int OpenEnds, int Row, int Col) FindStrongestOpponentLineInWindow(
-            GameBoard board, int centerRow, int centerCol, CellState opponent)
+        private static (int Length, int OpenEnds, int Row, int Col, int DRow, int DCol) 
+            FindStrongestOpponentLineInWindow(GameBoard board, int centerRow, int centerCol, CellState opponent)
         {
             int half = StateEncoder.Half;
-            int bestLen = 0, bestOpen = 0, bestRow = -1, bestCol = -1;
+            int bestLen = 0, bestOpen = 0, bestRow = -1, bestCol = -1, bestDr = 0, bestDc = 0;
 
             for (int dr = -half; dr <= half; dr++)
                 for (int dc = -half; dc <= half; dc++)
@@ -63,22 +63,36 @@ namespace GomokuGame.AI
                     if (r < 0 || r >= board.Size || c < 0 || c >= board.Size) continue;
                     if (board[r, c] != opponent) continue;
 
-                    var line = board.GetMaxLineWithOpenEnds(r, c, opponent);
-
-                    // Мёртвая линия — не угроза. Пропускаем сразу,
-                    // чтобы она не «перебила» живую линию меньшей длины.
+                    var line = BestOpponentLineAt(board, r, c, opponent);
                     if (line.OpenEnds == 0) continue;
 
                     if (line.Length > bestLen || (line.Length == bestLen && line.OpenEnds > bestOpen))
                     {
-                        bestLen = line.Length;
-                        bestOpen = line.OpenEnds;
-                        bestRow = r;
-                        bestCol = c;
+                        bestLen = line.Length; bestOpen = line.OpenEnds;
+                        bestRow = r; bestCol = c;
+                        bestDr = line.DRow; bestDc = line.DCol;
                     }
                 }
 
-            return (bestLen, bestOpen, bestRow, bestCol);
+            return (bestLen, bestOpen, bestRow, bestCol, bestDr, bestDc);
+        }
+
+        /// <summary>
+        /// Лучшая угроза opponent через клетку (row, col): максимум между обычной
+        /// подряд идущей линией и линией с одним разрывом — чтобы gap-паттерны
+        /// (например X . X X) получали ту же критичность, что и обычные угрозы
+        /// той же суммарной длины, и не терялись при формировании буфера критики.
+        /// </summary>
+        private static (int Length, int OpenEnds, int DRow, int DCol) BestOpponentLineAt(GameBoard board, int row, int col, CellState opponent)
+        {
+            var plain = board.GetMaxLineWithOpenEnds(row, col, opponent);
+            var gapped = board.GetMaxLineWithGap(row, col, opponent);
+
+            if (gapped.Length > plain.Length ||
+                (gapped.Length == plain.Length && gapped.OpenEnds > plain.OpenEnds))
+                return (gapped.Length, gapped.OpenEnds, gapped.DRow, gapped.DCol);
+
+            return (plain.Length, plain.OpenEnds, plain.DRow, plain.DCol);
         }
 
 
@@ -105,7 +119,7 @@ namespace GomokuGame.AI
             if (threat.Row >= 0 && threat.Length >= winLength - 2 && threat.OpenEnds > 0)
             {
                 board[row, col] = me;
-                var after = board.GetMaxLineWithOpenEnds(threat.Row, threat.Col, opponent);
+                var after = board.GetLineWithGapInDirection(threat.Row, threat.Col, threat.DRow, threat.DCol, opponent);
                 board[row, col] = CellState.Empty;
 
                 // (row, col) реально уменьшил число открытых концов угрозы —

@@ -61,6 +61,37 @@ namespace GomokuGame.AI
                 new Pattern("OppDiagonal2x4",
                     (-1, 0, O), (-2, 1, O), (-3, 2, O), (-4, 3, O)),
 
+                // --- ЗАЩИТА: чужие линии с ОДНОЙ дыркой (gap) ---
+                // Gap1xN — дырка дальше от target (O.OO / OOO.O),
+                // Gap2x3 — дырка ближе к target (OO.O).
+                new Pattern("OppHorizontalGap1x3",
+                    (-1, 0, O), (-1, -2, O), (-1, -3, O)),
+                new Pattern("OppHorizontalGap2x3",
+                    (-1, 0, O), (-1, -1, O), (-1, -3, O)),
+                new Pattern("OppHorizontalGap1x4",
+                    (-1, 0, O), (-1, -1, O), (-1, -2, O), (-1, -4, O)),
+
+                new Pattern("OppVerticalGap1x3",
+                    (0, -1, O), (-2, -1, O), (-3, -1, O)),
+                new Pattern("OppVerticalGap2x3",
+                    (0, -1, O), (-1, -1, O), (-3, -1, O)),
+                new Pattern("OppVerticalGap1x4",
+                    (0, -1, O), (-1, -1, O), (-2, -1, O), (-4, -1, O)),
+
+                new Pattern("OppDiagonal1Gap1x3",
+                    (-1, 0, O), (-3, -2, O), (-4, -3, O)),
+                new Pattern("OppDiagonal1Gap2x3",
+                    (-1, 0, O), (-2, -1, O), (-4, -3, O)),
+                new Pattern("OppDiagonal1Gap1x4",
+                    (-1, 0, O), (-2, -1, O), (-3, -2, O), (-5, -4, O)),
+
+                new Pattern("OppDiagonal2Gap1x3",
+                    (-1, 0, O), (-3, 2, O), (-4, 3, O)),
+                new Pattern("OppDiagonal2Gap2x3",
+                    (-1, 0, O), (-2, 1, O), (-4, 3, O)),
+                new Pattern("OppDiagonal2Gap1x4",
+                    (-1, 0, O), (-2, 1, O), (-3, 2, O), (-5, 4, O)),
+
                 // --- АТАКА: свои линии ---
                 new Pattern("OwnHorizontalLeftx3",
                     (-1, 0, X), (-1, -1, X), (-1, -2, X)),

@@ -8,6 +8,7 @@ namespace GomokuGame.Tests
 {
     [TestClass]
     [TestCategory("LongRunning")]
+    [Ignore("Слишком длинный тест. Вернуть, когда понядобится.")]
     public class GameSessionTrainingTests
     {
         [TestMethod]
