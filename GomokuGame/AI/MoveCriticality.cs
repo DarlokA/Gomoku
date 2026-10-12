@@ -100,7 +100,7 @@ namespace GomokuGame.AI
         /// Критичность клетки (row, col) как потенциального хода me.
         /// Диапазон [0.0, 1.0] — это ВЕС для отбора обучающего семпла, не target.
         /// </summary>
-        public static double ComputeCriticalityForMove(GameBoard board, int row, int col, CellState me, int winLength)
+        public static double ComputeCriticalityForMove(GameBoard board, int row, int col, CellState me, int winLength, bool? canWinSomewhereCache = null)
         {
             if (board[row, col] != CellState.Empty) return 0.0;
 
@@ -111,7 +111,8 @@ namespace GomokuGame.AI
                 return 1.0;
 
             // 2. Победа доступна где-то ЕЩЁ (не здесь) — эта клетка не нужное место.
-            if (CouldWinNow(board, me, winLength))
+            bool canWinSomewhere = canWinSomewhereCache ?? CouldWinNow(board, me, winLength);
+            if (canWinSomewhere)
                 return 0.0;
 
             // 3. Угроза противника от L-2 и выше, взятая строго в окне видимости сети.

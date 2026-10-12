@@ -8,7 +8,8 @@
     <StartupObject></StartupObject>
     <BaseOutputPath></BaseOutputPath>
     <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
-    <Platforms>AnyCPU;x64</Platforms>
+    <Platforms>x64</Platforms>
+	<ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

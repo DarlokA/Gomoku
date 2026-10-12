@@ -232,11 +232,16 @@ namespace GomokuGame.AI
             double maxCriticality = 0;
             var tiedMostCritical = new List<MoveCandidate>();
 
+            bool canWinSomewhere = MoveCriticality.CouldWinNow(board, me, board.WinLength); // один раз
+
             foreach (var (r, c) in empties)
             {
                 var state = StateEncoder.Encode(board, r, c, me, orientation);
-                double value = EvaluateMove(board, r, c, me);
-                double criticality = MoveCriticality.ComputeCriticalityForMove(board, r, c, me, board.WinLength);
+                double value = UseRotatingEvaluation
+                    ? EvaluateMove(board, r, c, me)
+                    : Network.Forward(state)[0];
+
+                double criticality = MoveCriticality.ComputeCriticalityForMove(board, r, c, me, board.WinLength, canWinSomewhere);
 
                 var candidate = new MoveCandidate
                 {
