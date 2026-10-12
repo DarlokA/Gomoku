@@ -45,6 +45,18 @@ namespace GomokuGame.AI
         }
 
         /// <summary>
+        /// Прямой проход через все слои. без записи в кэш backward. Безопасен для параллельных вызовов —
+        /// не трогает общее состояния слоев. Используется только для оценки хода, не для обучения.
+        /// </summary>
+        public double[] ForwardStateless(double[] input)
+        {
+            var current = input;
+            for (int i = 0; i < _layers.Length; i++)
+                current = _layers[i].ForwardStateless(current);
+            return current;
+        }
+
+        /// <summary>
         /// Обратный проход. gradOutput — производная loss по выходу сети.
         /// Возвращает производную loss по входу сети (не всегда нужна, но пусть будет).
         /// Градиенты по весам/смещениям накапливаются во внутренних буферах.

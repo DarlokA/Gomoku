@@ -207,6 +207,23 @@ namespace GomokuGame.AI
             }
         }
 
+        private double EvaluateMoveStateless(GameBoard board, int row, int col, CellState me)
+        {
+            if (UseRotatingEvaluation)
+            {
+                double sum = 0;
+                for (int orient = 0; orient < 4; orient++)
+                {
+                    var input = StateEncoder.Encode(board, row, col, me, orient);
+                    sum += Network.ForwardStateless(input)[0];
+                }
+                return sum / 4.0;
+            }
+
+            var singleInput = StateEncoder.Encode(board, row, col, me);
+            return Network.ForwardStateless(singleInput)[0];
+        }
+
         public (int Row, int Col)? ChooseMove(GameBoard board, CellState me)
         {
             var empties = new List<(int Row, int Col)>();
@@ -227,45 +244,53 @@ namespace GomokuGame.AI
 
             int orientation = 0;
 
+            bool canWinSomewhere = MoveCriticality.CouldWinNow(board, me, board.WinLength); // один раз
+
+            var candidates = new MoveCandidate[empties.Count];
+
+            using (var threadLocalBoard = new ThreadLocal<GameBoard>(() => board.Clone()))
+            {
+                Parallel.For(0, empties.Count, idx =>
+                {
+                    var (r, c) = empties[idx];
+                    var localBoard = threadLocalBoard.Value!; // своя доска на поток — без гонки по временным ходам
+
+                    var state = StateEncoder.Encode(board, r, c, me, orientation); // чтение, доска не меняется
+                    double value = EvaluateMoveStateless(board, r, c, me);
+                    double criticality = MoveCriticality.ComputeCriticalityForMove(localBoard, r, c, me, board.WinLength, canWinSomewhere);
+
+                    candidates[idx] = new MoveCandidate
+                    {
+                        Row = r,
+                        Col = c,
+                        Player = me,
+                        State = state,
+                        Value = value,
+                        Criticality = criticality
+                    };
+                });
+            }
+
             MoveCandidate? best = null;
             double bestValue = double.NegativeInfinity;
             double maxCriticality = 0;
             var tiedMostCritical = new List<MoveCandidate>();
 
-            bool canWinSomewhere = MoveCriticality.CouldWinNow(board, me, board.WinLength); // один раз
-
-            foreach (var (r, c) in empties)
+            foreach (var candidate in candidates) // строго по порядку empties — тай-брейки те же, что раньше
             {
-                var state = StateEncoder.Encode(board, r, c, me, orientation);
-                double value = UseRotatingEvaluation
-                    ? EvaluateMove(board, r, c, me)
-                    : Network.Forward(state)[0];
-
-                double criticality = MoveCriticality.ComputeCriticalityForMove(board, r, c, me, board.WinLength, canWinSomewhere);
-
-                var candidate = new MoveCandidate
+                if (candidate.Value > bestValue)
                 {
-                    Row = r,
-                    Col = c,
-                    Player = me,
-                    State = state,
-                    Value = value,
-                    Criticality = criticality
-                };
-
-                if (value > bestValue)
-                {
-                    bestValue = value;
+                    bestValue = candidate.Value;
                     best = candidate;
                 }
 
-                if (criticality > maxCriticality)
+                if (candidate.Criticality > maxCriticality)
                 {
-                    maxCriticality = criticality;
+                    maxCriticality = candidate.Criticality;
                     tiedMostCritical.Clear();
                     tiedMostCritical.Add(candidate);
                 }
-                else if (criticality == maxCriticality && criticality > 0)
+                else if (candidate.Criticality == maxCriticality && candidate.Criticality > 0)
                 {
                     tiedMostCritical.Add(candidate);
                 }

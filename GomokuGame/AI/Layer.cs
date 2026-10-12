@@ -67,6 +67,27 @@ namespace GomokuGame.AI
         }
 
         /// <summary>
+        /// Прямой проход без записи в кэш backward. Безопасен для параллельных вызовов —
+        /// не трогает общее состояние слоя. Используется только для оценки хода, не для обучения.
+        /// </summary>
+        public double[] ForwardStateless(double[] input)
+        {
+            if (input.Length != InputSize)
+                throw new ArgumentException($"Ожидался вход длины {InputSize}, получен {input.Length}");
+
+            var output = new double[OutputSize];
+            for (int i = 0; i < OutputSize; i++)
+            {
+                double z = B[i];
+                var wi = W[i];
+                for (int j = 0; j < InputSize; j++)
+                    z += wi[j] * input[j];
+                output[i] = Activation.Apply(Act, z);
+            }
+            return output;
+        }
+
+        /// <summary>
         /// Обратный проход. Принимает градиент по выходу слоя (dL/dA),
         /// возвращает градиент по входу (dL/dInput).
         /// Параллельно накапливает градиенты по весам/смещениям в outGradW/outGradB.

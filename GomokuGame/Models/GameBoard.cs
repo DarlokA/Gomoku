@@ -28,6 +28,18 @@ namespace GomokuGame.Models
 
         public void Reset() => Array.Clear(_cells, 0, _cells.Length);
 
+
+        /// <summary>
+        /// Независимая копия доски с теми же фишками — для параллельного расчёта кандидатов,
+        /// где каждый поток временно ставит/убирает фишки на СВОЕЙ доске, не мешая остальным.
+        /// </summary>
+        public GameBoard Clone()
+        {
+            var copy = new GameBoard(Size, WinLength);
+            Array.Copy(_cells, copy._cells, _cells.Length);
+            return copy;
+        }
+
         /// <summary>
         /// Проверяет победу и, если она есть, возвращает список клеток
         /// выигрышной линии. Иначе — null.
