@@ -16,63 +16,19 @@ namespace GomokuGame.AI
         public const int Half = WindowSize / 2;
 
         /// <summary>
-        /// Число каналов: [мои][чужие][пусто+граница].
+        /// Число каналов: [мои][чужие][пусто][стена].
+        /// Пусто и стена разведены по разным каналам — раньше обе ситуации
+        /// писались в один и тот же канал, и сеть не могла отличить
+        /// «рядом свободно» от «рядом край доски» (отсюда и привычка начинать игру с угла).
         /// </summary>
-        public const int Channels = 3;
+        public const int Channels = 4;
 
         /// <summary>
-        /// Размер входа сети: 9*9*3 = 243.
+        /// Размер входа сети: 9*9*4 = 324.
         /// </summary>
         public const int InputSize = WindowSize * WindowSize * Channels;
 
 
-        //TODO: Убрал улитку
-        /// <summary>
-        /// Кэшированный порядок обхода по спирали (улитка).
-        /// </summary>
-        //private static readonly (int dr, int dc)[] _spiralOrder = BuildSpiralOrder();
-
-        //private static (int dr, int dc)[] BuildSpiralOrder()
-        /*
-        {
-            int size = WindowSize;
-            int half = Half;
-            var result = new (int, int)[size * size];
-
-            result[0] = (0, 0);
-            int idx = 1;
-
-            int x = 0, y = 0;
-            int dx = 1, dy = 0;
-            int stepLength = 1;
-            int stepCount = 0;
-
-            while (idx < size * size)
-            {
-                for (int i = 0; i < stepLength; i++)
-                {
-                    x += dx;
-                    y += dy;
-
-                    if (Math.Abs(x) <= half && Math.Abs(y) <= half)
-                    {
-                        result[idx++] = (y, x);
-                        if (idx >= size * size) break;
-                    }
-                }
-
-                int newDx = -dy;
-                int newDy = dx;
-                dx = newDx;
-                dy = newDy;
-
-                stepCount++;
-                if (stepCount % 2 == 0) stepLength++;
-            }
-
-            return result;
-        }
-        */
         private static readonly (int dr, int dc)[] _traversalOrder = BuildRowMajorOrder();
 
         private static (int dr, int dc)[] BuildRowMajorOrder()
@@ -146,14 +102,14 @@ namespace GomokuGame.AI
 
                 if (r < 0 || r >= board.Size || c < 0 || c >= board.Size)
                 {
-                    result[2 * channelStride + i] = 1.0;
+                    result[3 * channelStride + i] = 1.0;   // канал стены (новый, был не отделён от "пусто")
                     continue;
                 }
 
                 var state = board[r, c];
 
                 if (state == CellState.Empty)
-                    result[2 * channelStride + i] = 1.0;
+                    result[2 * channelStride + i] = 1.0;   // канал "пусто", номер не менялся
                 else if (state == me)
                     result[0 * channelStride + i] = 1.0;
                 else

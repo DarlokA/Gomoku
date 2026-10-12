@@ -13,8 +13,8 @@ namespace GomokuGame.Tests
         {
             Assert.AreEqual(9, StateEncoder.WindowSize);
             Assert.AreEqual(4, StateEncoder.Half);
-            Assert.AreEqual(3, StateEncoder.Channels);
-            Assert.AreEqual(9 * 9 * 3, StateEncoder.InputSize); // 243
+            Assert.AreEqual(4, StateEncoder.Channels);
+            Assert.AreEqual(9 * 9 * 4, StateEncoder.InputSize); // 324
         }
 
         [TestMethod]
@@ -30,6 +30,7 @@ namespace GomokuGame.Tests
             Assert.AreEqual(1.0, data[0 * stride + centerIdx]);
             Assert.AreEqual(0.0, data[1 * stride + centerIdx]);
             Assert.AreEqual(0.0, data[2 * stride + centerIdx]);
+            Assert.AreEqual(0.0, data[3 * stride + centerIdx]);
         }
 
         [TestMethod]
@@ -49,7 +50,7 @@ namespace GomokuGame.Tests
             // Каждая из 81 позиций должна иметь ровно одну 1 в одном из каналов
             for (int i = 0; i < stride; i++)
             {
-                double sum = data[0 * stride + i] + data[1 * stride + i] + data[2 * stride + i];
+                double sum = data[0 * stride + i] + data[1 * stride + i] + data[2 * stride + i] + data[3 * stride + i];
                 Assert.AreEqual(1.0, sum, $"Позиция {i} не закодирована");
             }
         }
@@ -73,14 +74,43 @@ namespace GomokuGame.Tests
                     Assert.AreEqual(1.0, data[0 * stride + i]);
                     Assert.AreEqual(0.0, data[1 * stride + i]);
                     Assert.AreEqual(0.0, data[2 * stride + i]);
+                    Assert.AreEqual(0.0, data[3 * stride + i]);
                 }
                 else
                 {
                     Assert.AreEqual(0.0, data[0 * stride + i]);
                     Assert.AreEqual(0.0, data[1 * stride + i]);
                     Assert.AreEqual(1.0, data[2 * stride + i]);
+                    Assert.AreEqual(0.0, data[3 * stride + i]);
                 }
             }
+        }
+
+        [TestMethod]
+        public void Encode_NearCorner_WallChannelSeparateFromEmpty()
+        {
+            // Ход в углу доски (0,0): окно 9×9 заходит за край во все стороны кроме вправо-вниз.
+            var board = new GameBoard(15, 5);
+            var data = StateEncoder.Encode(board, 0, 0, CellState.X);
+
+            int k = StateEncoder.WindowSize;
+            int stride = k * k;
+
+            bool anyWall = false;
+            bool anyEmpty = false;
+
+            for (int i = 0; i < stride; i++)
+            {
+                if (data[3 * stride + i] > 0.5) anyWall = true;
+                if (data[2 * stride + i] > 0.5) anyEmpty = true;
+
+                // Канал "пусто" и канал "стена" никогда не должны гореть одновременно
+                Assert.IsFalse(data[2 * stride + i] > 0.5 && data[3 * stride + i] > 0.5,
+                    $"Позиция {i}: пусто и стена не должны совпадать");
+            }
+
+            Assert.IsTrue(anyWall, "В углу доски должны быть клетки за пределами поля (канал стены)");
+            Assert.IsTrue(anyEmpty, "В углу доски должны быть и реально пустые клетки на поле");
         }
 
         [TestMethod]
