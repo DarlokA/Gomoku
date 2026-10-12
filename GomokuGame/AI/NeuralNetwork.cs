@@ -9,6 +9,7 @@ namespace GomokuGame.AI
         // Буферы для градиентов: по одному на каждый слой
         private readonly double[][][] _gradW;
         private readonly double[][] _gradB;
+        private readonly double[] _gradOutputBuffer;
 
         public int InputSize => _layers[0].InputSize;
         public int OutputSize => _layers[^1].OutputSize;
@@ -31,6 +32,7 @@ namespace GomokuGame.AI
                 _gradW[i] = gw;
                 _gradB[i] = gb;
             }
+            _gradOutputBuffer = new double[OutputSize];   // ← выделяем один раз
         }
 
         /// <summary>
@@ -98,13 +100,12 @@ namespace GomokuGame.AI
             }
 
             // 3. dL/dOutput[i] = 2 * (output[i] - target[i])
-            var gradOutput = new double[output.Length];
             for (int i = 0; i < output.Length; i++)
-                gradOutput[i] = 2.0 * (output[i] - target[i]);
+                _gradOutputBuffer[i] = 2.0 * (output[i] - target[i]);
 
             // 4. Backward
             ZeroGradients();
-            Backward(gradOutput);
+            Backward(_gradOutputBuffer);
 
             // 5. Обновляем веса
             ApplyGradients(learningRate);

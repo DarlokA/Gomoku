@@ -15,8 +15,15 @@ namespace GomokuGame.AI
 
         // Кэш для backprop
         private double[] _lastInput = Array.Empty<double>();
-        private double[] _lastZ = Array.Empty<double>();   // pre-activation
-        private double[] _lastA = Array.Empty<double>();   // post-activation
+        private readonly double[] _lastZ;   // pre-activation
+        private readonly double[] _lastA;   // post-activation
+
+        // Буферы под градиенты в Backward — тоже выделяются один раз.
+        private readonly double[] _gradZBuffer;
+        private readonly double[] _gradInputBuffer;
+
+        // Буфер под ForwardStateless — свой на каждый поток, т.к. вызывается из Parallel.For.
+        private readonly ThreadLocal<double[]> _statelessBuffer;
 
         public Layer(int inputSize, int outputSize, ActivationType type, Random rng)
         {
@@ -38,10 +45,19 @@ namespace GomokuGame.AI
 
                 B[i] = 0.0;
             }
+            _lastZ = new double[outputSize];
+            _lastA = new double[outputSize];
+            _gradZBuffer = new double[outputSize];
+            _gradInputBuffer = new double[inputSize];
+            _statelessBuffer = new ThreadLocal<double[]>(() => new double[outputSize]);
         }
 
         /// <summary>
-        /// Прямой проход. Возвращает выход слоя (массив длины OutputSize).
+        /// Прямой проход (путь обучения, однопоточный). Пишет в переиспользуемые
+        /// _lastZ/_lastA вместо новых массивов на каждый вызов.
+        /// Важно: возвращаемый массив — тот же объект при следующем вызове Forward
+        /// будет перезаписан, поэтому результат нужно использовать сразу, не хранить
+        /// между вызовами (как и раньше по факту и делалось).
         /// </summary>
         public double[] Forward(double[] input)
         {
@@ -49,8 +65,6 @@ namespace GomokuGame.AI
                 throw new ArgumentException($"Ожидался вход длины {InputSize}, получен {input.Length}");
 
             _lastInput = input;
-            _lastZ = new double[OutputSize];
-            _lastA = new double[OutputSize];
 
             for (int i = 0; i < OutputSize; i++)
             {
@@ -67,15 +81,16 @@ namespace GomokuGame.AI
         }
 
         /// <summary>
-        /// Прямой проход без записи в кэш backward. Безопасен для параллельных вызовов —
-        /// не трогает общее состояние слоя. Используется только для оценки хода, не для обучения.
+        /// Прямой проход без записи в кэш backward — путь выбора хода, вызывается
+        /// параллельно из Parallel.For. Буфер вывода — свой на каждый поток (ThreadLocal),
+        /// чтобы потоки не затирали результаты друг друга.
         /// </summary>
         public double[] ForwardStateless(double[] input)
         {
             if (input.Length != InputSize)
                 throw new ArgumentException($"Ожидался вход длины {InputSize}, получен {input.Length}");
 
-            var output = new double[OutputSize];
+            var output = _statelessBuffer.Value!;
             for (int i = 0; i < OutputSize; i++)
             {
                 double z = B[i];
@@ -91,6 +106,8 @@ namespace GomokuGame.AI
         /// Обратный проход. Принимает градиент по выходу слоя (dL/dA),
         /// возвращает градиент по входу (dL/dInput).
         /// Параллельно накапливает градиенты по весам/смещениям в outGradW/outGradB.
+        /// Обратный проход (путь обучения, однопоточный). gradZ и gradInput теперь
+        /// переиспользуемые буферы вместо новых массивов на каждый вызов.
         /// </summary>
         public double[] Backward(double[] gradOutput, double[][] outGradW, double[] outGradB)
         {
@@ -98,30 +115,32 @@ namespace GomokuGame.AI
                 throw new ArgumentException($"Ожидался градиент длины {OutputSize}");
 
             // dL/dZ = dL/dA * f'(z)
-            var gradZ = new double[OutputSize];
             for (int i = 0; i < OutputSize; i++)
             {
                 double dA = gradOutput[i];
                 double dAct = Activation.Derivative(Act, _lastZ[i], _lastA[i]);
-                gradZ[i] = dA * dAct;
+                _gradZBuffer[i] = dA * dAct;
             }
 
+            // Буфер переиспользуется между вызовами — старые значения нужно обнулить
+            // перед накоплением через +=, раньше это гарантировалось новым массивом.
+            Array.Clear(_gradInputBuffer, 0, _gradInputBuffer.Length);
+
             // Градиент по входу: dL/dInput[j] = sum_i (dL/dZ[i] * W[i][j])
-            var gradInput = new double[InputSize];
             for (int i = 0; i < OutputSize; i++)
             {
-                double gz = gradZ[i];
+                double gz = _gradZBuffer[i];
                 if (gz == 0.0) continue;
                 var wi = W[i];
                 for (int j = 0; j < InputSize; j++)
-                    gradInput[j] += gz * wi[j];
+                    _gradInputBuffer[j] += gz * wi[j];
             }
 
             // Градиент по весам: dL/dW[i][j] = dL/dZ[i] * input[j]
             // Градиент по смещениям: dL/dB[i] = dL/dZ[i]
             for (int i = 0; i < OutputSize; i++)
             {
-                double gz = gradZ[i];
+                double gz = _gradZBuffer[i];
                 var gw = outGradW[i];
                 for (int j = 0; j < InputSize; j++)
                     gw[j] += gz * _lastInput[j];
@@ -129,7 +148,7 @@ namespace GomokuGame.AI
                 outGradB[i] += gz;
             }
 
-            return gradInput;
+            return _gradInputBuffer;
         }
 
         /// <summary>
