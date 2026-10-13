@@ -152,6 +152,8 @@ namespace GomokuGame.AI
                 EpsilonMin = EpsilonMin,
                 EpsilonDecay = EpsilonDecay,
                 Mode = Mode,
+                Correction = Correction,
+                Discount = Discount,
                 AttackWeight = AttackWeight,
                 DefenseWeight = DefenseWeight,
                 UseRotatingEvaluation = UseRotatingEvaluation,   // ← добавить
@@ -160,6 +162,8 @@ namespace GomokuGame.AI
 
             return copy;
         }
+
+        
 
         /// <summary>
         /// Загружает сеть из файла; если файла нет — создаёт новую.

@@ -128,8 +128,11 @@ namespace GomokuGame.Trainer
                 string? originalPath = ai?.NetworkPath ?? null;
                 try
                 {
-                    ai.NetworkPath = tempPath;
-                    ai.Save();
+                    if (ai != null)
+                    {
+                        ai.NetworkPath = tempPath;
+                        ai.Save();
+                    }
                     File.Move(tempPath, finalPath, overwrite: true);
                     Console.WriteLine($"  Checkpoint snapshot saved: {finalPath}");
                 }
@@ -143,7 +146,8 @@ namespace GomokuGame.Trainer
                 }
                 finally
                 {
-                    ai.NetworkPath = originalPath;
+                    if (ai != null)
+                        ai.NetworkPath = originalPath;
                 }
             }
         }
@@ -169,7 +173,49 @@ namespace GomokuGame.Trainer
             string correctionModeStr = GetArgString(a, "correction", "Full");
 
             bool leagueMode = algorithm.Equals("league", StringComparison.OrdinalIgnoreCase);
+            bool geneticMode = algorithm.Equals("genetic", StringComparison.OrdinalIgnoreCase);
 
+            if (geneticMode)
+            {
+                int population = GetArg(a, "population", Environment.ProcessorCount);
+                int eliteCount = GetArg(a, "eliteCount", Math.Max(1, population / 2));
+                double mutationSigma = GetArgDouble(a, "mutationSigma", 0.05);
+                int gamesPerPair = GetArg(a, "gamesPerPair", 100);
+
+                Console.WriteLine("=== GomokuGame Trainer / TRAIN (genetic) ===");
+                Console.WriteLine($"Board:         {boardSize}x{boardSize}");
+                Console.WriteLine($"Win len:       {winLength}");
+                Console.WriteLine($"Chunk games:   {chunk}");
+                Console.WriteLine($"Population:    {population}");
+                Console.WriteLine($"Elite count:   {eliteCount}");
+                Console.WriteLine($"Mutation sigma:{mutationSigma}");
+                Console.WriteLine($"Games/pair:    {gamesPerPair}");
+                Console.WriteLine($"Save as:       {saveName}.json");
+                Console.WriteLine();
+
+                string? existingPath = File.Exists(GetSavePath(saveName)) ? GetSavePath(saveName) : null;
+
+                var trainer = new GeneticTrainer(population, eliteCount, mutationSigma,
+                    gamesPerPair, boardSize, winLength, chunk, saveName);
+
+                trainer.InitializePopulation(existingPath);
+
+                int cycle = 0;
+                while (true)
+                {
+                    var stop_watch = Stopwatch.StartNew();
+                    trainer.RunChunkCycle();
+                    stop_watch.Stop();
+
+                    var best = trainer.GetBest();
+                    Console.WriteLine(
+                        $"Cycle {cycle,6:N0} | best score {best.Score,6:F1} | " +
+                        $"W/D/L {best.Wins}/{best.Draws}/{best.Losses} | time {stop_watch.Elapsed.TotalSeconds:F1}s");
+
+                    cycle++;
+                }
+                // выход — только Ctrl+C, как и в league/standard при infinite
+            }
 
             string savePath = GetSavePath(saveName);
             bool continuing = File.Exists(savePath);
@@ -538,7 +584,7 @@ namespace GomokuGame.Trainer
 
         // ============ HELPERS ============
 
-        private static string GetSavePath(string name)
+        public static string GetSavePath(string name)
         {
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
