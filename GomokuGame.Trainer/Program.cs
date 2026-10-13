@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using static GomokuGame.AI.AiPlayer;
 
 namespace GomokuGame.Trainer
@@ -16,21 +17,106 @@ namespace GomokuGame.Trainer
 
         public static void Main(string[] args)
         {
-            // Первый аргумент — команда:
-            //   train — обучение
-            //   match — матч между двумя сетями
-            if (args.Length > 0 && args[0].Equals("match", StringComparison.OrdinalIgnoreCase))
+            if (args.Length == 0)
             {
-                RunMatch(args);
-                return;
-            }else if (args.Length > 0 && args[0].Equals("matchlog", StringComparison.OrdinalIgnoreCase))
-            {
-                RunMatchLog(args);
+                Console.WriteLine("Использование: GomokuGame.Trainer.exe <train|match|matchlog> ключ:значение ...");
                 return;
             }
 
-            RunTraining(args);
+            string command = args[0];
+            var tokens = Tokenize(args.Skip(1).ToArray());
+            var a = ParseKeyValueArgs(tokens);
+
+            switch (command.ToLowerInvariant())
+            {
+                case "train":
+                    RunTraining(a);
+                    break;
+                case "match":
+                    RunMatch(a);
+                    break;
+                case "matchlog":
+                    RunMatchLog(a);
+                    break;
+                default:
+                    Console.WriteLine($"!! Неизвестная команда: \"{command}\". Ожидалась train, match или matchlog.");
+                    break;
+            }
         }
+
+        // ============ ARG PARSING (команда + ключ:значение, с поддержкой кавычек) ============
+
+        private static List<string> Tokenize(string[] args)
+        {
+            string joined = string.Join(" ", args);
+            var tokens = new List<string>();
+            var current = new StringBuilder();
+            bool inQuotes = false;
+            bool tokenStarted = false;
+
+            for (int i = 0; i < joined.Length; i++)
+            {
+                char c = joined[i];
+
+                if (c == '"')
+                {
+                    inQuotes = !inQuotes;
+                    tokenStarted = true;
+                    continue;
+                }
+
+                if (c == ' ' && !inQuotes)
+                {
+                    if (tokenStarted)
+                    {
+                        tokens.Add(current.ToString());
+                        current.Clear();
+                        tokenStarted = false;
+                    }
+                    continue;
+                }
+
+                current.Append(c);
+                tokenStarted = true;
+            }
+
+            if (tokenStarted)
+                tokens.Add(current.ToString());
+
+            if (inQuotes)
+                Console.WriteLine("!! Предупреждение: незакрытая кавычка в аргументах командной строки.");
+
+            return tokens;
+        }
+
+        private static Dictionary<string, string> ParseKeyValueArgs(List<string> tokens)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var token in tokens)
+            {
+                int sep = token.IndexOf(':');
+                if (sep <= 0)
+                {
+                    Console.WriteLine($"!! Аргумент без ключа проигнорирован: \"{token}\" (ожидался формат ключ:значение)");
+                    continue;
+                }
+                string key = token.Substring(0, sep);
+                string value = token.Substring(sep + 1);
+                result[key] = value;
+            }
+            return result;
+        }
+
+        private static int GetArg(Dictionary<string, string> a, string key, int def)
+            => a.TryGetValue(key, out var s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)
+                ? v : def;
+
+        private static double GetArgDouble(Dictionary<string, string> a, string key, double def)
+            => a.TryGetValue(key, out var s) && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
+                ? v : def;
+
+        private static string GetArgString(Dictionary<string, string> a, string key, string def)
+            => a.TryGetValue(key, out var s) ? s : def;
 
         static void SaveSnapshotAtomic(AiPlayer ai, string saveName, long done)
         {
@@ -44,7 +130,7 @@ namespace GomokuGame.Trainer
                 {
                     ai.NetworkPath = tempPath;
                     ai.Save();
-                    File.Move(tempPath, finalPath, overwrite: true); // атомарная подмена
+                    File.Move(tempPath, finalPath, overwrite: true);
                     Console.WriteLine($"  Checkpoint snapshot saved: {finalPath}");
                 }
                 catch (Exception ex)
@@ -52,7 +138,7 @@ namespace GomokuGame.Trainer
                     Console.WriteLine($"  ОШИБКА снимка на {done:N0}: {ex.Message}");
                     if (File.Exists(tempPath))
                     {
-                        try { File.Delete(tempPath); } catch { /* не критично */ }
+                        try { File.Delete(tempPath); } catch { }
                     }
                 }
                 finally
@@ -64,25 +150,23 @@ namespace GomokuGame.Trainer
 
         // ============ TRAIN ============
 
-        private static void RunTraining(string[] args)
+        private static void RunTraining(Dictionary<string, string> a)
         {
-            // Параметры: [boardSize] [winLength] [games] [lr] [epsilon] [decay] [seed] [mode] [saveName]
-            int boardSize = GetArg(args, 0, 9);
-            int winLength = GetArg(args, 1, 5);
-            int games = GetArg(args, 2, 10_000);
-            bool infinite = games <= 0;   // games=0 значит "без ограничения"
-            double lr = GetArgDouble(args, 3, 0.001);
-            double epsilon = GetArgDouble(args, 4, 0.3);
-            double decay = GetArgDouble(args, 5, 0.9995);
-            int seed = GetArg(args, 6, 42);//Больше не используется оставлен для обратной совместимости.
-            string modeStr = args.Length > 7 ? args[7] : "C";
-            string saveName = args.Length > 8 ? args[8] : "network";
-            bool showDemo = GetArg(args, 9, 1) == 1;
-            string algorithm = args.Length > 10 ? args[10] : "standard";
-            int chunk = GetArg(args, 11, 500);
-            int warmupGames = GetArg(args, 12, 500);
-            int snapshotEvery = GetArg(args, 13, 100);
-            string correctionModeStr = args.Length > 14 ? args[14] : "Full";
+            int boardSize = GetArg(a, "board", 9);
+            int winLength = GetArg(a, "win", 5);
+            int games = GetArg(a, "games", 10_000);
+            bool infinite = games <= 0;
+            double lr = GetArgDouble(a, "lr", 0.001);
+            double epsilon = GetArgDouble(a, "epsilon", 0.3);
+            double decay = GetArgDouble(a, "decay", 0.9995);
+            string modeStr = GetArgString(a, "mode", "C");
+            string saveName = GetArgString(a, "save", "network");
+            bool showDemo = GetArg(a, "demo", 1) == 1;
+            string algorithm = GetArgString(a, "algorithm", "standard");
+            int chunk = GetArg(a, "chunk", 500);
+            int warmupGames = GetArg(a, "warmup", 500);
+            int snapshotEvery = GetArg(a, "snapshotEvery", 100);
+            string correctionModeStr = GetArgString(a, "correction", "Full");
 
             bool leagueMode = algorithm.Equals("league", StringComparison.OrdinalIgnoreCase);
 
@@ -91,8 +175,8 @@ namespace GomokuGame.Trainer
             bool continuing = File.Exists(savePath);
 
             var ai = continuing
-                ? AiPlayer.LoadOrCreate(savePath, seed)
-                : AiPlayer.CreateFresh(seed);
+                ? AiPlayer.LoadOrCreate(savePath)
+                : AiPlayer.CreateFresh();
 
             const int SnapshotInterval = 25_000; // можешь сделать 10_000, если диска не жалко
             const int PlateauWindowChunks = 20;  // 20 чанков * 500 партий = 10 000 партий на окно
@@ -178,7 +262,6 @@ namespace GomokuGame.Trainer
             Console.WriteLine($"Games:   {(infinite ? "∞ (стоп — закрыть окно / Ctrl+C)" : games.ToString())}");
             Console.WriteLine($"LR:      {lr}");
             Console.WriteLine($"Epsilon: {ai.Epsilon} (min 0.1, decay {decay})");
-            Console.WriteLine($"Seed:    {seed}");
             Console.WriteLine($"Mode:    {ai.Mode}");
             Console.WriteLine($"Correction: {ai.Correction}");
             Console.WriteLine($"Chunk:    {chunk}");
@@ -357,27 +440,24 @@ namespace GomokuGame.Trainer
 
         // ============ MATCH ============
 
-        private static void RunMatch(string[] args)
+        private static void RunMatch(Dictionary<string, string> a)
         {
-            // Параметры: match [boardSize] [winLength] [games] [fileA] [fileB]
-            // fileA играет за X, fileB — за O.
-            // Если fileA == "random" — случайная сеть (без обучения).
-            int boardSize = GetArg(args, 1, 9);
-            int winLength = GetArg(args, 2, 5);
-            int games = GetArg(args, 3, 1000);
-            string fileA = args.Length > 4 ? args[4] : "network";
-            string fileB = args.Length > 5 ? args[5] : "network";
+            int boardSize = GetArg(a, "board", 9);
+            int winLength = GetArg(a, "win", 5);
+            int games = GetArg(a, "games", 1000);
+            string fileX = GetArgString(a, "x", "network");
+            string fileO = GetArgString(a, "o", "network");
 
-            var aiX = LoadOrRandom(fileA, seed: 1);
-            var aiO = LoadOrRandom(fileB, seed: 2);
+            var aiX = LoadOrRandom(fileX, seed: 1);
+            var aiO = LoadOrRandom(fileO, seed: 2);
 
 
             Console.WriteLine("=== GomokuGame Trainer / MATCH ===");
             Console.WriteLine($"Board:   {boardSize}x{boardSize}");
             Console.WriteLine($"Win len: {winLength}");
             Console.WriteLine($"Games:   {games}");
-            Console.WriteLine($"X plays: {fileA}");
-            Console.WriteLine($"O plays: {fileB}");
+            Console.WriteLine($"X plays: {fileX}");
+            Console.WriteLine($"O plays: {fileO}");
             Console.WriteLine();
 
             int threadCount = Environment.ProcessorCount;
@@ -397,23 +477,22 @@ namespace GomokuGame.Trainer
                               $"({sw.Elapsed.TotalMilliseconds / games:F1}ms/game)");
         }
 
-        private static void RunMatchLog(string[] args)
+        private static void RunMatchLog(Dictionary<string, string> a)
         {
-            // Параметры: matchlog [boardSize] [winLength] [fileA] [fileB] [logFile] [epsilon]
-            int boardSize = GetArg(args, 1, 15);
-            int winLength = GetArg(args, 2, 5);
-            string fileA = args.Length > 3 ? args[3] : "network";
-            string fileB = args.Length > 4 ? args[4] : "network";
-            string? logFile = args.Length > 5 ? args[5] : null;
-            double epsilon = GetArgDouble(args, 6, 0.0);   // по умолчанию 0 — детерминированная игра
+            int boardSize = GetArg(a, "board", 15);
+            int winLength = GetArg(a, "win", 5);
+            string fileX = GetArgString(a, "x", "network");
+            string fileO = GetArgString(a, "o", "network");
+            string? logFile = a.TryGetValue("log", out var lf) ? lf : null;
+            double epsilon = GetArgDouble(a, "epsilon", 0.0);
 
-            var aiX = LoadOrRandom(fileA, seed: 1);
-            var aiO = LoadOrRandom(fileB, seed: 2);
+            var aiX = LoadOrRandom(fileX, seed: 1);
+            var aiO = LoadOrRandom(fileO, seed: 2);
             aiX.Epsilon = epsilon;
             aiO.Epsilon = epsilon;
 
             Console.WriteLine("=== GomokuGame Trainer / MATCHLOG ===");
-            Console.WriteLine($"X plays: {fileA}, O plays: {fileB}, epsilon: {epsilon}");
+            Console.WriteLine($"X plays: {fileX}, O plays: {fileO}, epsilon: {epsilon}");
             Console.WriteLine();
 
             System.IO.TextWriter writer = logFile != null
@@ -465,13 +544,5 @@ namespace GomokuGame.Trainer
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "My Games", "GomokuGame", name + ".json");
         }
-
-        private static int GetArg(string[] args, int i, int def)
-            => args.Length > i && int.TryParse(args[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)
-                ? v : def;
-
-        private static double GetArgDouble(string[] args, int i, double def)
-            => args.Length > i && double.TryParse(args[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
-                ? v : def;
     }
 }
