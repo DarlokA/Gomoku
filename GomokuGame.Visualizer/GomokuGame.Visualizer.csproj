@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+	<Page Include="App.xaml" />
     <ProjectReference Include="..\GomokuGame\GomokuGame.csproj" />
   </ItemGroup>
 
