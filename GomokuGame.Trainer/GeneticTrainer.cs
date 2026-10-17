@@ -190,6 +190,10 @@ namespace GomokuGame.Trainer
             _generationCounter++;
         }
 
+        // Множители силы шума по индексу слоя: входной слой мутируется сильнее всего,
+        // выходной — слабее всего (геометрическое затухание ×0,5 за каждый слой вглубь).
+        private static readonly double[] LayerSigmaMultipliers = { 1.0, 0.5, 0.25 };
+
         private static AiPlayer MutateFrom(AiPlayer parent, double sigma, int cloneSeed)
         {
             var clone = parent.Clone(cloneSeed);
@@ -198,11 +202,14 @@ namespace GomokuGame.Trainer
             for (int li = 0; li < clone.Network.LayerCount; li++)
             {
                 var layer = clone.Network.GetLayer(li);
+                int multIndex = Math.Min(li, LayerSigmaMultipliers.Length - 1);
+                double layerSigma = sigma * LayerSigmaMultipliers[multIndex];
+
                 for (int r = 0; r < layer.W.Length; r++)
                 {
                     for (int c = 0; c < layer.W[r].Length; c++)
                     {
-                        layer.W[r][c] += NextGaussian(rng) * sigma;
+                        layer.W[r][c] += NextGaussian(rng) * layerSigma;
                     }
                 }
                 // layer.B намеренно не трогаем — мутируем только веса
