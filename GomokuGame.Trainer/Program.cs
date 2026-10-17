@@ -181,6 +181,8 @@ namespace GomokuGame.Trainer
                 int eliteCount = GetArg(a, "eliteCount", Math.Max(1, population / 2));
                 double mutationSigma = GetArgDouble(a, "mutationSigma", 0.05);
                 int gamesPerPair = GetArg(a, "gamesPerPair", 100);
+                int maxCycles = GetArg(a, "cycles", 0);
+                bool infiniteCycles = maxCycles <= 0;
 
                 Console.WriteLine("=== GomokuGame Trainer / TRAIN (genetic) ===");
                 Console.WriteLine($"Board:         {boardSize}x{boardSize}");
@@ -190,6 +192,7 @@ namespace GomokuGame.Trainer
                 Console.WriteLine($"Elite count:   {eliteCount}");
                 Console.WriteLine($"Mutation sigma:{mutationSigma}");
                 Console.WriteLine($"Games/pair:    {gamesPerPair}");
+                Console.WriteLine($"Cycles:        {(infiniteCycles ? "∞ (стоп — Ctrl+C)" : maxCycles.ToString())}");
                 Console.WriteLine($"Save as:       {saveName}.json");
                 Console.WriteLine();
 
@@ -201,7 +204,7 @@ namespace GomokuGame.Trainer
                 trainer.InitializePopulation(existingPath);
 
                 int cycle = 0;
-                while (true)
+                while (infiniteCycles || cycle < maxCycles)
                 {
                     var stop_watch = Stopwatch.StartNew();
                     trainer.RunChunkCycle();
@@ -214,7 +217,11 @@ namespace GomokuGame.Trainer
 
                     cycle++;
                 }
-                // выход — только Ctrl+C, как и в league/standard при infinite
+
+                if (!infiniteCycles)
+                    Console.WriteLine($"=== Готово: {maxCycles} циклов эволюции пройдено ===");
+                // при infiniteCycles выход — только Ctrl+C, как и раньше
+                return;
             }
 
             string savePath = GetSavePath(saveName);

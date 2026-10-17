@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using GomokuGame.Models;
+using System.Linq;
 
 namespace GomokuGame.AI
 {
@@ -287,50 +288,73 @@ namespace GomokuGame.AI
         // В PatternProbe.cs — путь для генетической CSV
         private static string GetGeneticCsvPath(string saveName)
         {
-            // та же папка, что и у обычных логов ("Мои Документы"), только суффикс _genetic
-            string documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            return Path.Combine(documentsPath, $"{saveName}_genetic.csv");
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "My Games", "GomokuGame", "pattern_logs");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, $"genetic_log_{saveName}.csv");
         }
 
         public static void AppendCsv(
-                        string saveName,
-                        long gamesFrom,
-                        long gamesTo,
-                        double lastLoss,
-                        double epsilon,
-                        int criticalBufferSize,
-                        int criticalSamplesLearnedCount,
-                        double averageAttemptsToLearn,
-                        Dictionary<string, double> patternValues)
+                    string saveName,
+                    int cycle,
+                    double mutationSigma,
+                    long gamesFrom,
+                    long gamesTo,
+                    double bestScore,
+                    double avgScore,
+                    double worstScore,
+                    double scoreStdDev,
+                    int bestWins,
+                    int bestDraws,
+                    int bestLosses,
+                    double lastLoss,
+                    double epsilon,
+                    int criticalBufferSize,
+                    int criticalSamplesLearnedCount,
+                    double averageAttemptsToLearn,
+                    Dictionary<string, double> patternValues)
         {
-
             string path = GetGeneticCsvPath(saveName);
-
             bool writeHeader = !File.Exists(path);
 
             using var writer = new StreamWriter(path, append: true);
+            var ci = CultureInfo.InvariantCulture;
 
             if (writeHeader)
             {
-                var header = new List<string> { "GamesFrom", "GamesTo", "LastLoss", "Epsilon",
-            "CriticalBufferSize", "CriticalSamplesLearnedCount", "AverageAttemptsToLearn" };
+                var header = new List<string> {
+                    "Cycle", "MutationSigma", "GamesFrom", "GamesTo",
+                    "BestScore", "AvgScore", "WorstScore", "ScoreStdDev",
+                    "BestWins", "BestDraws", "BestLosses",
+                    "LastLoss", "Epsilon",
+                    "CriticalBufferSize", "CriticalSamplesLearnedCount", "AverageAttemptsToLearn" };
                 header.AddRange(patternValues.Keys);
-                writer.WriteLine(string.Join(",", header));
+                writer.WriteLine(string.Join(";", header));
             }
 
             var row = new List<string>
             {
-                gamesFrom.ToString(CultureInfo.InvariantCulture),
-                gamesTo.ToString(CultureInfo.InvariantCulture),
-                lastLoss.ToString("F6", CultureInfo.InvariantCulture),
-                epsilon.ToString("F4", CultureInfo.InvariantCulture),
-                criticalBufferSize.ToString(CultureInfo.InvariantCulture),
-                criticalSamplesLearnedCount.ToString(CultureInfo.InvariantCulture),
-                averageAttemptsToLearn.ToString("F4", CultureInfo.InvariantCulture)
+                cycle.ToString(ci),
+                mutationSigma.ToString("F4", ci),
+                gamesFrom.ToString(ci),
+                gamesTo.ToString(ci),
+                bestScore.ToString("F2", ci),
+                avgScore.ToString("F2", ci),
+                worstScore.ToString("F2", ci),
+                scoreStdDev.ToString("F2", ci),
+                bestWins.ToString(ci),
+                bestDraws.ToString(ci),
+                bestLosses.ToString(ci),
+                lastLoss.ToString("F6", ci),
+                epsilon.ToString("F4", ci),
+                criticalBufferSize.ToString(ci),
+                criticalSamplesLearnedCount.ToString(ci),
+                averageAttemptsToLearn.ToString("F4", ci)
             };
-            row.AddRange(patternValues.Values.Select(v => v.ToString("F4", CultureInfo.InvariantCulture)));
+            row.AddRange(patternValues.Values.Select(v => v.ToString("F4", ci)));
 
-            writer.WriteLine(string.Join(",", row));
+            writer.WriteLine(string.Join(";", row));
         }
     }
 }

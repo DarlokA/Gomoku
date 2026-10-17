@@ -59,21 +59,39 @@ namespace GomokuGame.Trainer
         {
             TrainPhase();
             TournamentPhase();
+            var scores = _individuals.Select(p => p.Score).ToList();
+            double avgScore = scores.Average();
+            double worstScore = scores.Min();
+            double bestScoreCheck = scores.Max(); // для сверки с best, должно совпасть с лучшей особью
+            double mean = avgScore;
+            double scoreStdDev = Math.Sqrt(scores.Sum(s => Math.Pow(s - mean, 2)) / scores.Count);
 
-            var best = GetBest();
+            var best = _individuals.OrderByDescending(p => p.Score).First();
 
             var patternValues = PatternProbe.EvaluateAll(best.Ai, _boardSize, _winLength);
-            PatternProbe.LogToConsole(_cycleCounter, (_cycleCounter + 1L) * _chunkGames, patternValues);
+            int gamesFrom = _cycleCounter * _chunkGames;
+            int gamesTo = (_cycleCounter + 1) * _chunkGames;
+            PatternProbe.LogToConsole(gamesFrom, gamesTo, patternValues);
             PatternProbe.AppendCsv(
-                _saveName,
-                _cycleCounter * (long)_chunkGames,
-                (_cycleCounter + 1L) * _chunkGames,
-                best.Ai.LastAverageLoss,
-                best.Ai.Epsilon,
-                best.Ai.CriticalBuffer.BufferSize,
-                best.Ai.CriticalBuffer.LearnedSamplesCount,
-                best.Ai.CriticalBuffer.AverageAttemptsToLearn,
-                patternValues);
+                saveName: _saveName,
+                cycle: _cycleCounter,
+                mutationSigma: _mutationSigma,
+                gamesFrom: gamesFrom,
+                gamesTo: gamesTo,
+                bestScore: best.Score,
+                avgScore: avgScore,
+                worstScore: worstScore,
+                scoreStdDev: scoreStdDev,
+                bestWins: best.Wins,
+                bestDraws: best.Draws,
+                bestLosses: best.Losses,
+                lastLoss: best.LastLoss,
+                epsilon: best.Epsilon,
+                criticalBufferSize: best.CriticalBufferSize,
+                criticalSamplesLearnedCount: best.CriticalSamplesLearnedCount,
+                averageAttemptsToLearn: best.AverageAttemptsToLearn,
+                patternValues: patternValues
+            );
 
             SelectionAndBreedingPhase();
             SaveBestToDisk(best);
@@ -88,7 +106,12 @@ namespace GomokuGame.Trainer
                 new ParallelOptions { MaxDegreeOfParallelism = _population },
                 individual =>
                 {
-                    GameSession.TrainMany(individual.Ai, _chunkGames, _boardSize, _winLength, progressEvery: _chunkGames);
+                    var stats = GameSession.TrainMany(individual.Ai, _chunkGames, _boardSize, _winLength, progressEvery: _chunkGames);
+                    individual.LastLoss = stats.LastAverageLoss;
+                    individual.Epsilon = stats.Epsilon;
+                    individual.CriticalBufferSize = stats.CriticalBufferSize;
+                    individual.CriticalSamplesLearnedCount = stats.CriticalSamplesLearnedCount;
+                    individual.AverageAttemptsToLearn = stats.AverageAttemptsToLearn;
                 });
         }
 

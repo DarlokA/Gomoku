@@ -15,6 +15,11 @@ namespace GomokuGame.Trainer
         public int Wins { get; set; }
         public int Draws { get; set; }
         public int Losses { get; set; }
+        public double LastLoss { get; set; }
+        public double Epsilon { get; set; }
+        public int CriticalBufferSize { get; set; }
+        public int CriticalSamplesLearnedCount { get; set; }
+        public double AverageAttemptsToLearn { get; set; }
 
         public void ResetTournamentStats()
         {
