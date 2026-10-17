@@ -156,7 +156,7 @@ namespace GomokuGame.AI
                 Discount = Discount,
                 AttackWeight = AttackWeight,
                 DefenseWeight = DefenseWeight,
-                UseRotatingEvaluation = UseRotatingEvaluation,   // ← добавить
+                UseRotatingEvaluation = UseRotatingEvaluation, 
                 NetworkPath = NetworkPath
             };
 

@@ -299,6 +299,7 @@ namespace GomokuGame.AI
                     string saveName,
                     int cycle,
                     double mutationSigma,
+                    string trainingMode,
                     long gamesFrom,
                     long gamesTo,
                     double bestScore,
@@ -324,7 +325,7 @@ namespace GomokuGame.AI
             if (writeHeader)
             {
                 var header = new List<string> {
-                    "Cycle", "MutationSigma", "GamesFrom", "GamesTo",
+                    "Cycle", "MutationSigma", "TrainingMode", "GamesFrom", "GamesTo",
                     "BestScore", "AvgScore", "WorstScore", "ScoreStdDev",
                     "BestWins", "BestDraws", "BestLosses",
                     "LastLoss", "Epsilon",
@@ -337,6 +338,7 @@ namespace GomokuGame.AI
             {
                 cycle.ToString(ci),
                 mutationSigma.ToString("F4", ci),
+                trainingMode,
                 gamesFrom.ToString(ci),
                 gamesTo.ToString(ci),
                 bestScore.ToString("F2", ci),

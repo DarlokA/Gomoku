@@ -184,6 +184,15 @@ namespace GomokuGame.Trainer
                 int maxCycles = GetArg(a, "cycles", 0);
                 bool infiniteCycles = maxCycles <= 0;
 
+                var trainingMode = modeStr.ToUpperInvariant() switch
+                {
+                    "A" => LearningMode.LineLengthOnly,
+                    "B" => LearningMode.DiscountedOutcome,
+                    "C" => LearningMode.DiscountedWithShaping,
+                    "D" => LearningMode.AttackDefenseShaping,
+                    _ => LearningMode.DiscountedWithShaping
+                };
+
                 Console.WriteLine("=== GomokuGame Trainer / TRAIN (genetic) ===");
                 Console.WriteLine($"Board:         {boardSize}x{boardSize}");
                 Console.WriteLine($"Win len:       {winLength}");
@@ -191,6 +200,7 @@ namespace GomokuGame.Trainer
                 Console.WriteLine($"Population:    {population}");
                 Console.WriteLine($"Elite count:   {eliteCount}");
                 Console.WriteLine($"Mutation sigma:{mutationSigma}");
+                Console.WriteLine($"Training mode: {trainingMode}");
                 Console.WriteLine($"Games/pair:    {gamesPerPair}");
                 Console.WriteLine($"Cycles:        {(infiniteCycles ? "∞ (стоп — Ctrl+C)" : maxCycles.ToString())}");
                 Console.WriteLine($"Save as:       {saveName}.json");
@@ -199,7 +209,7 @@ namespace GomokuGame.Trainer
                 string? existingPath = File.Exists(GetSavePath(saveName)) ? GetSavePath(saveName) : null;
 
                 var trainer = new GeneticTrainer(population, eliteCount, mutationSigma,
-                    gamesPerPair, boardSize, winLength, chunk, saveName);
+                    gamesPerPair, boardSize, winLength, chunk, trainingMode, saveName);
 
                 trainer.InitializePopulation(existingPath);
 

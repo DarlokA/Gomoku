@@ -24,8 +24,11 @@ namespace GomokuGame.Trainer
 
         private Individual[] _individuals = null!;
 
+        private readonly AiPlayer.LearningMode _trainingMode;
+
         public GeneticTrainer(int population, int eliteCount, double mutationSigma,
-            int gamesPerPair, int boardSize, int winLength, int chunkGames, string saveName)
+                int gamesPerPair, int boardSize, int winLength, int chunkGames,
+                AiPlayer.LearningMode trainingMode, string saveName)
         {
             _population = population;
             _eliteCount = eliteCount;
@@ -34,6 +37,7 @@ namespace GomokuGame.Trainer
             _boardSize = boardSize;
             _winLength = winLength;
             _chunkGames = chunkGames;
+            _trainingMode = trainingMode;
             _saveName = saveName;
         }
 
@@ -44,13 +48,14 @@ namespace GomokuGame.Trainer
             AiPlayer seedAi = existingNetworkPath != null && File.Exists(existingNetworkPath)
                 ? AiPlayer.LoadOrCreate(existingNetworkPath)
                 : AiPlayer.CreateFresh();
+            seedAi.Mode = _trainingMode;
 
             for (int i = 0; i < _population; i++)
             {
                 AiPlayer ai = i < _eliteCount
                     ? seedAi.Clone(/*cloneSeed:*/1000 + i)                 // чистый клон, без шума
                     : MutateFrom(seedAi, _mutationSigma, /*cloneSeed:*/ 1000 + i); // мутант
-
+                ai.Mode = _trainingMode;
                 _individuals[i] = new Individual { Id = i, Ai = ai };
             }
         }
@@ -76,6 +81,7 @@ namespace GomokuGame.Trainer
                 saveName: _saveName,
                 cycle: _cycleCounter,
                 mutationSigma: _mutationSigma,
+                trainingMode: _trainingMode.ToString(),
                 gamesFrom: gamesFrom,
                 gamesTo: gamesTo,
                 bestScore: best.Score,
@@ -176,6 +182,7 @@ namespace GomokuGame.Trainer
             {
                 var parent = elite[i % elite.Length]; // равномерно по кругу
                 rest[i].Ai = MutateFrom(parent.Ai, _mutationSigma, cloneSeed: 2000 + i + _generationCounter * 100);
+                rest[i].Ai.Mode = _trainingMode;
                 rest[i].ResetTournamentStats();
             }
 
