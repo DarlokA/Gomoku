@@ -260,7 +260,8 @@ namespace GomokuGame.AI
                     var localBoard = threadLocalBoard.Value!; // своя доска на поток — без гонки по временным ходам
 
                     var state = StateEncoder.Encode(board, r, c, me, orientation); // чтение, доска не меняется
-                    double value = EvaluateMoveStateless(board, r, c, me);
+                    double value = UseRotatingEvaluation ?  EvaluateMoveStateless(board, r, c, me)
+    :                                                       Network.ForwardStateless(state)[0];
                     double criticality = MoveCriticality.ComputeCriticalityForMove(localBoard, r, c, me, board.WinLength, canWinSomewhere);
 
                     candidates[idx] = new MoveCandidate
