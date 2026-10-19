@@ -15,10 +15,10 @@ namespace GomokuGame.AI
         public double GoodErrorThreshold { get; set; } = 0.01;
 
         /// <summary>Сколько успешных проверок подряд нужно, чтобы считать семпл выученным.</summary>
-        public int RequiredStreak { get; set; } = 3;
+        public int RequiredStreak { get; set; } = 2;
 
         /// <summary>Жёсткий потолок размера буфера — старые записи вытесняются при переполнении.</summary>
-        public int MaxSize { get; set; } = 2000;
+        public int MaxSize { get; set; } = 20000;
 
         private readonly Dictionary<long, CriticalSample> _byKey = new();
         private readonly List<long> _order = new();

@@ -162,7 +162,9 @@ namespace GomokuGame.Trainer
             bool infinite = games <= 0;
             double lr = GetArgDouble(a, "lr", 0.001);
             double epsilon = GetArgDouble(a, "epsilon", 0.3);
-            double decay = GetArgDouble(a, "decay", 0.9995);
+            double decayTargetFraction = GetArgDouble(a, "decayTarget", 0.85);
+            bool decayExplicit = a.ContainsKey("decay");
+            double decay = GetArgDouble(a, "decay", 0.9995); // дефолт на случай infinite/явного decay ниже не пересчитывается
             string modeStr = GetArgString(a, "mode", "C");
             string saveName = GetArgString(a, "save", "network");
             bool showDemo = GetArg(a, "demo", 1) == 1;
@@ -236,6 +238,13 @@ namespace GomokuGame.Trainer
 
             string savePath = GetSavePath(saveName);
             bool continuing = File.Exists(savePath);
+
+            if (!decayExplicit && !infinite && games > 0)
+            {
+                const double epsilonFloor = 0.1; // совпадает с ai.EpsilonMin ниже
+                long targetGames = Math.Max(1, (long)(games * decayTargetFraction));
+                decay = Math.Pow(epsilonFloor / epsilon, 1.0 / targetGames);
+            }
 
             var ai = continuing
                 ? AiPlayer.LoadOrCreate(savePath)

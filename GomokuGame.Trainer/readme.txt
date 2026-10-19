@@ -14,7 +14,7 @@ GomokuGame Trainer
 			demo — показывать ли демо-партию после чанка, 1/0 (по умолчанию 1)
 
 		Пример использования:
-		GomokuGame.Trainer.exe train algorithm:standard board:9 win:5 games:20000 save:network_a
+		GomokuGame.Trainer.exe train algorithm:standard board:15 win:5 games:20000  mode:A  save:network_a_2
 
 Режим 2. train algorithm:league (Игра с замороженным противником. Сеть по состоянию на конец предыдущего чанка)
 			board — размер доски (по умолчанию 9)
