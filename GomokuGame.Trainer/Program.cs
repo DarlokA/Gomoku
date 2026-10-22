@@ -1,4 +1,4 @@
-﻿using GomokuGame.AI;
+using GomokuGame.AI;
 using GomokuGame.Models;
 using System;
 using System.Collections.Generic;
@@ -351,6 +351,10 @@ namespace GomokuGame.Trainer
             var sw = Stopwatch.StartNew();
             int numChunks = infinite ? 0 : games / chunk;
 
+            long lastCriticalBufferSize = ai.CriticalBuffer.BufferSize;
+            long lastCriticalSamplesLearnedCount = ai.CriticalBuffer.LearnedSamplesCount;
+            double lastAverageAttemptsToLearn = ai.CriticalBuffer.AverageAttemptsToLearn;
+
             Console.WriteLine($"{"Done",12} | {"X",10} {"O",10} {"Draw",8} | {"Loss",7} | {"Eps",5} | {"Missed",10} | {"Time",8} | {"PerParty time",7} | {"PerParty movies",7}");
             Console.WriteLine(new string('-', 130));
 
@@ -404,8 +408,21 @@ namespace GomokuGame.Trainer
                     $"{done,12:N0} | {totalXWins,10:N0} {totalOWins,10:N0} {totalDraws,8:N0} | " +
                     $"{lastLoss,7:F4} | {ai.Epsilon,5:F3} | {totalMissedWins,10:N0} | " +
                     $"{sw.Elapsed.TotalSeconds,7:F1}s | {delta.TotalMilliseconds,6:F1}ms | {avg_movies,6:F1}");
+                // Вычисляем дельту между предыдущим и текущим значением
+                long deltaCriticalBufferSize = CriticalBufferSize - lastCriticalBufferSize;
+                long deltaCriticalSamplesLearnedCount = CriticalSamplesLearnedCount - lastCriticalSamplesLearnedCount;
+                double deltaAverageAttemptsToLearn = AverageAttemptsToLearn - lastAverageAttemptsToLearn;
+
+                // Обновляем предыдущие значения
+                lastCriticalBufferSize = CriticalBufferSize;
+                lastCriticalSamplesLearnedCount = CriticalSamplesLearnedCount;
+                lastAverageAttemptsToLearn = AverageAttemptsToLearn;
+
+                // Вывод с форматированием дельты
                 Console.WriteLine(
-                    $"CriticalBufferSize {CriticalBufferSize,12:N0} | CriticalSamplesLearnedCount {CriticalSamplesLearnedCount,10:N0} | AverageAttemptsToLearn {AverageAttemptsToLearn,10:N0}");
+                    $"CriticalBufferSize {CriticalBufferSize,12:N0} {deltaCriticalBufferSize,10:N0} | " +
+                    $"CriticalSamplesLearnedCount {CriticalSamplesLearnedCount,10:N0} {deltaCriticalSamplesLearnedCount,10:N0} | " +
+                    $"AverageAttemptsToLearn {AverageAttemptsToLearn,10:N0}"); // Формат: {value, delta}
 
                 // ===== Pattern probe — после каждого чанка =====
                 var patternValues = PatternProbe.EvaluateAll(ai, boardSize, winLength);
