@@ -420,9 +420,9 @@ namespace GomokuGame.Trainer
 
                 // Вывод с форматированием дельты
                 Console.WriteLine(
-                    $"CriticalBufferSize {CriticalBufferSize,12:N0} {deltaCriticalBufferSize,10:N0} | " +
-                    $"CriticalSamplesLearnedCount {CriticalSamplesLearnedCount,10:N0} {deltaCriticalSamplesLearnedCount,10:N0} | " +
-                    $"AverageAttemptsToLearn {AverageAttemptsToLearn,10:N0}"); // Формат: {value, delta}
+                    $"CriticalBufferSize {CriticalBufferSize,12:N0} {deltaCriticalBufferSize,10:+N0} | " +
+                    $"CriticalSamplesLearnedCount {CriticalSamplesLearnedCount,10:N0} {deltaCriticalSamplesLearnedCount,10:+N0} | " +
+                    $"AverageAttemptsToLearn {AverageAttemptsToLearn,10:N0}"); // Формат: {value, +/-delta}
 
                 // ===== Pattern probe — после каждого чанка =====
                 var patternValues = PatternProbe.EvaluateAll(ai, boardSize, winLength);
