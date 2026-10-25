@@ -1,6 +1,7 @@
 ﻿using GomokuGame.Models;
 using GomokuGame.Services;
 using GomokuGame.AI.Training;
+using GomokuGame.AI.Configuration;
 
 namespace GomokuGame.AI
 {
@@ -60,7 +61,10 @@ namespace GomokuGame.AI
         public CriticalSampleBuffer CriticalBuffer { get; } = new CriticalSampleBuffer();
 
         private readonly List<MoveRecord> _gameHistory = new();
-        private readonly AiTrainer _trainer = new();
+        
+        private readonly IBoardNetworkTrainer _trainer;
+
+        public NetworkTopology Topology { get; }
 
         // Гиперпараметры
         public double LearningRate { get; set; } = 0.01;
@@ -99,10 +103,42 @@ namespace GomokuGame.AI
         // Путь к файлу весов (для автосохранения)
         public string? NetworkPath { get; set; }
 
-        public AiPlayer(NeuralNetwork network, Random? rng = null)
+        public AiPlayer(
+                    NeuralNetwork network,
+                    Random? rng = null,
+                    NetworkTopology? topology = null)
         {
+            if (network == null)
+                throw new ArgumentNullException(nameof(network));
+
+            if (topology != null)
+            {
+                SingleNetworkFactory.ValidateNetwork(network, topology);
+            }
+
+            Topology = topology
+                ?? SingleNetworkFactory.DescribeGradeMainNetwork(network);
+
+            _trainer = BoardTrainerFactory.Create(
+                Topology.Stages[0].TrainerName);
+
             Network = network;
             _rng = rng ?? new Random();
+        }
+
+        public double[] EncodeState(
+                GameBoard board,
+                int row,
+                int col,
+                CellState player,
+                int orientation = 0)
+        {
+            return _trainer.Encode(
+                board,
+                row,
+                col,
+                player,
+                orientation);
         }
 
         /// <summary>
@@ -117,15 +153,22 @@ namespace GomokuGame.AI
 
         // ----- Создание / загрузка -----
 
-        public static AiPlayer CreateFresh(int seed = 0)
+        public static AiPlayer CreateFresh(
+                int seed = 0,
+                NetworkTopology? topology = null)
         {
-            var rng = seed == 0 ? new Random() : new Random(seed);
-            var net = new NeuralNetwork(
-                new Layer(StateEncoder.InputSize, 128, ActivationType.ReLU, rng),
-                new Layer(128, 64, ActivationType.ReLU, rng),
-                new Layer(64, 1, ActivationType.Sigmoid, rng));
+            var configuration = topology ?? TopologyParser.Parse(null);
 
-            return new AiPlayer(net, rng);
+            // Проверяем конфигурацию до создания весов.
+            SingleNetworkFactory.ValidateTopology(configuration);
+
+            var rng = seed == 0
+                ? new Random()
+                : new Random(seed);
+
+            var network = SingleNetworkFactory.Create(configuration, rng);
+
+            return new AiPlayer(network, rng, configuration);
         }
 
         /// <summary>
@@ -150,7 +193,7 @@ namespace GomokuGame.AI
             }
 
             var newNet = new NeuralNetwork(layers);
-            var copy = new AiPlayer(newNet, rng)
+            var copy = new AiPlayer(newNet, rng, Topology)
             {
                 LearningRate = LearningRate,
                 Epsilon = Epsilon,
@@ -168,18 +211,45 @@ namespace GomokuGame.AI
             return copy;
         }
 
-        
+
 
         /// <summary>
         /// Загружает сеть из файла; если файла нет — создаёт новую.
         /// </summary>
-        public static AiPlayer LoadOrCreate(string path, int seed = 0)
+        public static AiPlayer LoadOrCreate(
+            string path,
+            int seed = 0,
+            NetworkTopology? topology = null)
         {
+            if (topology != null)
+                SingleNetworkFactory.ValidateTopology(topology);
+
             var player = NetworkSerializer.Load(path);
+
             if (player == null)
             {
-                player = CreateFresh(seed);
+                player = CreateFresh(seed, topology);
             }
+            else if (topology != null)
+            {
+                string requested = SingleNetworkFactory.Format(topology);
+                string saved = SingleNetworkFactory.Format(player.Topology);
+
+                if (!string.Equals(
+                    requested,
+                    saved,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new FormatException(
+                        "Сохранённая топология не совпадает с запрошенной. " +
+                        $"В файле: {saved}. Запрошено: {requested}.");
+                }
+
+                SingleNetworkFactory.ValidateNetwork(
+                    player.Network,
+                    topology);
+            }
+
             player.NetworkPath = path;
             return player;
         }
@@ -202,7 +272,7 @@ namespace GomokuGame.AI
                 double sum = 0;
                 for (int orient = 0; orient < 4; orient++)
                 {
-                    var input = StateEncoder.Encode(board, row, col, me, orient);
+                    var input = EncodeState(board, row, col, me, orient);
                     var output = Network.Forward(input);
                     sum += output[0];
                 }
@@ -210,7 +280,7 @@ namespace GomokuGame.AI
             }
             else
             {
-                var input = StateEncoder.Encode(board, row, col, me);
+                var input = EncodeState(board, row, col, me);
                 var output = Network.Forward(input);
                 return output[0];
             }
@@ -223,13 +293,13 @@ namespace GomokuGame.AI
                 double sum = 0;
                 for (int orient = 0; orient < 4; orient++)
                 {
-                    var input = StateEncoder.Encode(board, row, col, me, orient);
+                    var input = EncodeState(board, row, col, me, orient);
                     sum += Network.ForwardStateless(input)[0];
                 }
                 return sum / 4.0;
             }
 
-            var singleInput = StateEncoder.Encode(board, row, col, me);
+            var singleInput = EncodeState(board, row, col, me);
             return Network.ForwardStateless(singleInput)[0];
         }
 
@@ -264,7 +334,7 @@ namespace GomokuGame.AI
                     var (r, c) = empties[idx];
                     var localBoard = threadLocalBoard.Value!; // своя доска на поток — без гонки по временным ходам
 
-                    var state = StateEncoder.Encode(board, r, c, me, orientation); // чтение, доска не меняется
+                    var state = EncodeState(board, r, c, me, orientation); // чтение, доска не меняется
                     double value = UseRotatingEvaluation ?  EvaluateMoveStateless(board, r, c, me)
     :                                                       Network.ForwardStateless(state)[0];
                     double criticality = MoveCriticality.ComputeCriticalityForMove(localBoard, r, c, me, board.WinLength, canWinSomewhere);
@@ -360,7 +430,7 @@ namespace GomokuGame.AI
 
         public void RecordState(GameBoard board, int row, int col, CellState player)
         {
-            var state = StateEncoder.Encode(board, row, col, player);
+            var state = EncodeState(board, row, col, player);
             _gameHistory.Add(new MoveRecord(state, row, col, player));
         }
 

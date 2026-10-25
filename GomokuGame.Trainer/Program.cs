@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using static GomokuGame.AI.AiPlayer;
+using GomokuGame.AI.Configuration;
 
 namespace GomokuGame.Trainer
 {
@@ -27,15 +28,28 @@ namespace GomokuGame.Trainer
 
             string command = args[0];
 
-            var tokens = Tokenize(args.Skip(1).ToArray());
+            var tokens = args.Skip(1).ToList();
             var arguments = ParseKeyValueArgs(tokens);
 
             switch (command.ToLowerInvariant())
             {
                 case "train":
-                    RunTraining(ParseTrainingArguments(arguments));
-                    break;
+                    {
+                        try
+                        {
+                            var trainingArguments = ParseTrainingArguments(arguments);
+                            RunTraining(trainingArguments);
+                        }
+                        catch (FormatException ex)
+                        {
+                            Console.Error.WriteLine(
+                                $"Ошибка конфигурации обучения: {ex.Message}");
 
+                            Environment.ExitCode = 1;
+                        }
+
+                        break;
+                    }
                 case "match":
                     RunMatch(ParseMatchArguments(arguments));
                     break;
@@ -53,50 +67,7 @@ namespace GomokuGame.Trainer
         }
 
         // ============ ARG PARSING (команда + ключ:значение, с поддержкой кавычек) ============
-
-        private static List<string> Tokenize(string[] args)
-        {
-            string joined = string.Join(" ", args);
-            var tokens = new List<string>();
-            var current = new StringBuilder();
-            bool inQuotes = false;
-            bool tokenStarted = false;
-
-            for (int i = 0; i < joined.Length; i++)
-            {
-                char c = joined[i];
-
-                if (c == '"')
-                {
-                    inQuotes = !inQuotes;
-                    tokenStarted = true;
-                    continue;
-                }
-
-                if (c == ' ' && !inQuotes)
-                {
-                    if (tokenStarted)
-                    {
-                        tokens.Add(current.ToString());
-                        current.Clear();
-                        tokenStarted = false;
-                    }
-                    continue;
-                }
-
-                current.Append(c);
-                tokenStarted = true;
-            }
-
-            if (tokenStarted)
-                tokens.Add(current.ToString());
-
-            if (inQuotes)
-                Console.WriteLine("!! Предупреждение: незакрытая кавычка в аргументах командной строки.");
-
-            return tokens;
-        }
-
+        
         private static Dictionary<string, string> ParseKeyValueArgs(List<string> tokens)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -132,6 +103,10 @@ namespace GomokuGame.Trainer
             string algorithm = GetArgString(
                 args, "algorithm", "standard");
 
+            args.TryGetValue("topology", out var topologyValue);
+
+            NetworkTopology topology = TopologyParser.Parse(topologyValue);
+
             var result = new TrainingArguments
             {
                 Game = new GameSettings(
@@ -143,6 +118,8 @@ namespace GomokuGame.Trainer
                 Chunk = GetArg(args, "chunk", 500),
 
                 Seed = GetArg(args, "seed", 0),
+
+                Topology = topology,
 
                 Mode = ParseLearningMode(
                     GetArgString(args, "mode", "C"))
@@ -269,6 +246,19 @@ namespace GomokuGame.Trainer
             };
         }
 
+        private static void PrintRequestedTopology(NetworkTopology topology)
+        {
+            string description = string.Join(
+                "->",
+                topology.Stages.Select(stage =>
+                    $"{{{string.Join(",", stage.Sizes)}}}" +
+                    $"[{string.Join(",", stage.OutputNames)}]" +
+                    $"({stage.TrainerName})"));
+
+            Console.WriteLine($"Topology: {description}");
+            Console.WriteLine();
+        }
+
         static void SaveSnapshotAtomic(AiPlayer ai, string saveName, long done)
         {
             string finalPath = GetSavePath($"{saveName}_ep{done}");
@@ -345,6 +335,19 @@ namespace GomokuGame.Trainer
 
         private static void RunTraining(TrainingArguments arguments)
         {
+            if (arguments.Algorithm.Equals(
+                    "genetic",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new FormatException(
+                    "Создание генетической популяции по топологии " +
+                    "ещё не подключено.");
+            }
+
+            SingleNetworkFactory.ValidateTopology(arguments.Topology);
+
+            PrintRequestedTopology(arguments.Topology);
+
             switch (arguments.Algorithm.ToLowerInvariant())
             {
                 case "genetic":
@@ -430,8 +433,13 @@ namespace GomokuGame.Trainer
             }
 
             var ai = continuing
-                    ? AiPlayer.LoadOrCreate(savePath, arguments.Seed)
-                    : AiPlayer.CreateFresh(arguments.Seed);
+                        ? AiPlayer.LoadOrCreate(
+                            savePath,
+                            arguments.Seed,
+                            arguments.Topology)
+                        : AiPlayer.CreateFresh(
+                            arguments.Seed,
+                            arguments.Topology);
 
             const int SnapshotInterval = 25_000; // можешь сделать 10_000, если диска не жалко
             const int PlateauWindowChunks = 20;  // 20 чанков * 500 партий = 10 000 партий на окно

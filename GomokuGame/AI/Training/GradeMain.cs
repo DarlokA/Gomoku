@@ -5,8 +5,25 @@ using GomokuGame.Models;
 
 namespace GomokuGame.AI.Training
 {
-    internal sealed class AiTrainer
+    public sealed partial class GradeMain : IBoardNetworkTrainer
     {
+        public int InputSize => StateEncoder.InputSize;
+
+        public double[] Encode(
+            GameBoard board,
+            int row,
+            int col,
+            CellState player,
+            int orientation = 0)
+        {
+            return StateEncoder.Encode(
+                board,
+                row,
+                col,
+                player,
+                orientation);
+        }
+
         public double LearnFromGame(
             AiPlayer player,
             List<MoveRecord> history,

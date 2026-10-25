@@ -1,4 +1,5 @@
 ﻿using static GomokuGame.AI.AiPlayer;
+using GomokuGame.AI.Configuration;
 
 namespace GomokuGame.Trainer
 {
@@ -9,6 +10,9 @@ namespace GomokuGame.Trainer
         public string SaveName { get; set; }
         public int Chunk { get; set; }
         public int Seed { get; set; }
+
+        public NetworkTopology Topology { get; set; }
+
         public LearningMode Mode { get; set; }
 
         public GradientTrainingArguments Gradient { get; set; }

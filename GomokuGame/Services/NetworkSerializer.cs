@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using static GomokuGame.AI.AiPlayer;
+using GomokuGame.AI.Configuration;
 
 namespace GomokuGame.Services
 {
@@ -21,6 +22,7 @@ namespace GomokuGame.Services
         {
             var dto = ToDto(player.Network);
             dto.Mode = player.Mode.ToString();
+            dto.Topology = SingleNetworkFactory.Format(player.Topology);
 
             // Накопленная статистика по всем сессиям обучения — чтобы продолжение
             // "бесконечного" обучения не стартовало со статистикой с нуля.
@@ -68,7 +70,14 @@ namespace GomokuGame.Services
                 if (dto == null) return null;
 
                 var net = FromDto(dto);
-                var player = new AiPlayer(net);
+
+                var topology = dto.Topology == null
+                    ? SingleNetworkFactory.DescribeGradeMainNetwork(net)
+                    : TopologyParser.Parse(dto.Topology);
+
+                var player = new AiPlayer(
+                    net,
+                    topology: topology);
 
                 // Восстанавливаем Mode
                 if (Enum.TryParse<LearningMode>(dto.Mode, out var mode))
@@ -104,6 +113,12 @@ namespace GomokuGame.Services
 
                 return player;
             }
+            catch (FormatException)
+            {
+                // Ошибку топологии нельзя превращать в сигнал
+                // "создай новую сеть вместо сохранённой".
+                throw;
+            }
             catch
             {
                 return null;
@@ -114,6 +129,7 @@ namespace GomokuGame.Services
 
         private class NetworkDto
         {
+            public string? Topology { get; set; }
             public int Version { get; set; } = 2;   // подняли версию
             public int InputSize { get; set; }
             public string Mode { get; set; } = "DiscountedWithShaping";
