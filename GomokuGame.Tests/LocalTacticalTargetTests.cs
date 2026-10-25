@@ -161,6 +161,145 @@ namespace GomokuGame.Tests
             Assert.AreEqual(0, ai.CriticalBuffer.BufferSize);
         }
 
+        [TestMethod]
+        public void ClosingOneOfTwoWinningEnds_DoesNotCountAsRescue()
+        {
+            var board = NewBoard(4);
+
+            board[Center, Center - 3] = CellState.O;
+            board[Center, Center - 2] = CellState.O;
+            board[Center, Center - 1] = CellState.O;
+
+            // До хода противник может выиграть:
+            // в центре либо в Center - 4.
+            var move = EncodeMove(board);
+
+            double target = Compute(move, 4);
+
+            Assert.AreEqual(0.0, target, Tolerance);
+        }
+
+        [TestMethod]
+        public void ClosingOnlyWinningEnd_HasHigherTargetThanFailedRescue()
+        {
+            var openBoard = NewBoard(4);
+
+            openBoard[Center, Center - 3] = CellState.O;
+            openBoard[Center, Center - 2] = CellState.O;
+            openBoard[Center, Center - 1] = CellState.O;
+
+            var closedBoard = NewBoard(4);
+
+            closedBoard[Center, Center - 4] = CellState.X;
+            closedBoard[Center, Center - 3] = CellState.O;
+            closedBoard[Center, Center - 2] = CellState.O;
+            closedBoard[Center, Center - 1] = CellState.O;
+
+            double failedRescue = Compute(EncodeMove(openBoard), 4);
+            double actualDefense = Compute(EncodeMove(closedBoard), 4);
+
+            Assert.IsTrue(actualDefense > failedRescue);
+            Assert.IsTrue(actualDefense < 1.0);
+        }
+
+        [TestMethod]
+        public void OwnWin_OverridesRemainingOpponentWinningThreat()
+        {
+            var board = NewBoard(5);
+
+            board[Center, Center - 2] = CellState.X;
+            board[Center, Center - 1] = CellState.X;
+            board[Center, Center + 1] = CellState.X;
+            board[Center, Center + 2] = CellState.X;
+
+            // Другая строка: видимая угроза противника.
+            for (int dc = -2; dc <= 1; dc++)
+                board[Center + 2, Center + dc] = CellState.O;
+
+            double target = Compute(EncodeMove(board), 5);
+
+            Assert.AreEqual(1.0, target, Tolerance);
+        }
+
+        [TestMethod]
+        public void OpponentLineWithoutEnoughSpace_IsNotAThreat()
+        {
+            var board = NewBoard(5);
+
+            board[Center, Center - 4] = CellState.X;
+
+            board[Center, Center - 3] = CellState.O;
+            board[Center, Center - 2] = CellState.O;
+            board[Center, Center - 1] = CellState.O;
+
+            board[Center, Center + 1] = CellState.X;
+
+            // Контрольная позиция: те же свои камни,
+            // но без предполагаемой угрозы противника.
+            var baselineBoard = NewBoard(5);
+
+            baselineBoard[Center, Center - 4] = CellState.X;
+            baselineBoard[Center, Center + 1] = CellState.X;
+
+            double baselineTarget = Compute(EncodeMove(baselineBoard), 5);
+            double actualTarget = Compute(EncodeMove(board), 5);
+
+            // Чужая линия не вмещает победную пятёрку,
+            // поэтому защитная оценка не должна появляться.
+            // Обычная оценка собственного развития сохраняется.
+            Assert.AreEqual(
+                baselineTarget,
+                actualTarget,
+                Tolerance);
+        }
+
+        [TestMethod]
+        public void Target_IsInvariantUnderEncoderOrientations()
+        {
+            var board = NewBoard(5);
+
+            board[Center, Center - 3] = CellState.O;
+            board[Center, Center - 2] = CellState.O;
+            board[Center, Center - 1] = CellState.O;
+
+            double expected = Compute(EncodeMove(board), 5);
+
+            for (int orientation = 0; orientation < 4; orientation++)
+            {
+                var state = StateEncoder.Encode(
+                    board,
+                    Center,
+                    Center,
+                    CellState.X,
+                    orientation);
+
+                var move = new MoveRecord(
+                    state,
+                    Center,
+                    Center,
+                    CellState.X);
+
+                double actual = Compute(move, 5);
+
+                Assert.AreEqual(
+                    expected,
+                    actual,
+                    Tolerance,
+                    $"Ориентация: {orientation}");
+            }
+        }
+
+        [TestMethod]
+        public void Compute_DoesNotModifyEncodedState()
+        {
+            var move = BlockTwoStonesThreat(5);
+            var original = (double[])move.State.Clone();
+
+            Compute(move, 5);
+
+            CollectionAssert.AreEqual(original, move.State);
+        }
+
         private static MoveRecord OwnWinningMove(int winLength)
         {
             var board = NewBoard(winLength);
