@@ -7,18 +7,6 @@ namespace GomokuGame.AI.Training
 {
     internal sealed class AiTrainer
     {
-        private readonly ITrainingTarget _lineLength =
-            new LineLengthTarget();
-
-        private readonly ITrainingTarget _discountedOutcome =
-            new DiscountedOutcomeTarget();
-
-        private readonly ITrainingTarget _discountedWithShaping =
-            new DiscountedWithShapingTarget();
-
-        private readonly ITrainingTarget _attackDefense =
-            new AttackDefenseTarget();
-
         public double LearnFromGame(
             AiPlayer player,
             List<MoveRecord> history,
@@ -153,22 +141,7 @@ namespace GomokuGame.AI.Training
             if (move.IsForcedCorrection)
                 return Math.Clamp(move.Criticality, 0.0, 1.0);
 
-            ITrainingTarget? calculator = mode switch
-            {
-                AiPlayer.LearningMode.LineLengthOnly =>
-                    _lineLength,
-
-                AiPlayer.LearningMode.DiscountedOutcome =>
-                    _discountedOutcome,
-
-                AiPlayer.LearningMode.DiscountedWithShaping =>
-                    _discountedWithShaping,
-
-                AiPlayer.LearningMode.AttackDefenseShaping =>
-                    _attackDefense,
-
-                _ => null
-            };
+            var calculator = TrainingTargetFactory.Get(mode);
 
             return calculator?.Compute(move, index, context) ?? 0.5;
         }

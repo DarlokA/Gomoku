@@ -19,7 +19,13 @@ namespace GomokuGame.AI
             DiscountedWithShaping,
             
             /// <summary>Вариант D: дисконт + shaping за потенциальную длину линии .</summary>
-            AttackDefenseShaping
+            AttackDefenseShaping,
+
+            /// <summary>
+            /// Вариант E: локальная тактическая оценка хода,
+            /// без зависимости от результата партии.
+            /// </summary>
+            LocalTactical
 
         }
 
