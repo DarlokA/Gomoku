@@ -1,9 +1,6 @@
 ﻿using GomokuGame.Models;
 using GomokuGame.Services;
 using GomokuGame.AI.Training;
-using GomokuGame.AI.Training.Targets;
-using System;
-using System.Collections.Generic;
 
 namespace GomokuGame.AI
 {
@@ -57,7 +54,7 @@ namespace GomokuGame.AI
         public CriticalSampleBuffer CriticalBuffer { get; } = new CriticalSampleBuffer();
 
         private readonly List<MoveRecord> _gameHistory = new();
-        private int _winLength = 5;
+        private readonly AiTrainer _trainer = new();
 
         // Гиперпараметры
         public double LearningRate { get; set; } = 0.01;
@@ -369,117 +366,11 @@ namespace GomokuGame.AI
 
         public double LearnFromGame(CellState winner, int winLength)
         {
-            _winLength = winLength;
-            if (_gameHistory.Count == 0) return 0;
-
-            int count = _gameHistory.Count;
-            double totalLoss = 0;
-
-            // Индекс последнего хода победителя (если есть победитель)
-            int lastWinnerIdx = -1;
-            if (winner != CellState.Empty)
-            {
-                for (int i = _gameHistory.Count - 1; i >= 0; i--)
-                {
-                    if (_gameHistory[i].Player == winner)
-                    {
-                        lastWinnerIdx = i;
-                        break;
-                    }
-                }
-            }
-
-            int criticalCountThisGame = 0;
-            bool reverseOrder = (EpisodesTrained % 2) == 1;
-
-            for (int i = 0; i < _gameHistory.Count; i++)
-            {
-                var move = _gameHistory[i];
-                double target = ComputeTarget(move, i, lastWinnerIdx, winner);
-                double effectiveLr = LearningRate * move.CriticalityWeight;
-
-                if (move.AllOrientationStates != null)
-                {
-                    // Гарантированный x4: та же target на всех 4 поворотах одной позиции.
-                    // Чередуем порядок обхода по чётности партии, чтобы одна и та же
-                    // ориентация не оказывалась систематически "последней" на общих весах.
-                    double sumLoss = 0;
-                    int n = move.AllOrientationStates.Length;
-                    for (int k = 0; k < n; k++)
-                    {
-                        int ori = reverseOrder ? n - 1 - k : k;
-                        sumLoss += Network.TrainOnExample(move.AllOrientationStates[ori], new[] { target }, effectiveLr);
-                    }
-                    totalLoss += sumLoss / n;
-                }
-                else
-                {
-                    // Страховка на случай сэмплов без ориентаций (например, из других путей обучения).
-                    totalLoss += Network.TrainOnExample(move.State, new[] { target }, effectiveLr);
-                }
-
-                // В постоянный буфер — только по явному флагу критичности,
-                // а не по тому, посчитаны ли 4 ориентации (теперь они есть у всех).
-                if (move.IsCritical && (Correction == CorrectionMode.Full || Correction == CorrectionMode.All))
-                {
-                    criticalCountThisGame++;
-                    long key = CriticalSampleBuffer.ComputeKey(move.AllOrientationStates![0]);
-                    CriticalBuffer.AddOrUpdate(move.AllOrientationStates, target, move.CriticalityWeight, key);
-                }
-            }
-
-            // Full/Once/Off — дозированная подмесь, как раньше.
-            // All — принудительный проход по ВСЕМУ текущему буферу каждую партию.
-            int mixCount = Correction == CorrectionMode.All
-                            ? CriticalBuffer.BufferSize
-                            : criticalCountThisGame * 2;
-            CriticalBuffer.TrainMix(Network, LearningRate, mixCount, reverseOrder);
-
-            _gameHistory.Clear();
-            LastAverageLoss = totalLoss / count;
-            EpisodesTrained++;
-            DecayEpsilon();
-            return LastAverageLoss;
-        }
-
-        private double ComputeTarget(MoveRecord move, int idx, int lastWinnerIdx, CellState winner)
-        {
-            // Форсированная коррекция: это не реально сыгранный ход, а показанный сети
-            // задним числом правильный ответ на прямую угрозу (своя победа или блок чужой).
-            // Его цель — объективная критичность момента, а не то, как закончилась вся партия:
-            // иначе дисконт по исходу и shaping по чужому потенциалу могут обнулить или даже
-            // развернуть сигнал ровно там, где он важнее всего.
-            if (move.IsForcedCorrection)
-            {
-                return Math.Clamp(move.Criticality, 0.0, 1.0);
-            }
-
-            var context = new TrainingContext(
-                                winner,
-                                lastWinnerIdx,
-                                _winLength,
-                                Discount,
-                                AttackWeight,
-                                DefenseWeight);
-
-            ITrainingTarget? calculator = Mode switch
-            {
-                LearningMode.LineLengthOnly =>
-                    new LineLengthTarget(),
-
-                LearningMode.DiscountedOutcome =>
-                    new DiscountedOutcomeTarget(),
-
-                LearningMode.DiscountedWithShaping =>
-                    new DiscountedWithShapingTarget(),
-
-                LearningMode.AttackDefenseShaping =>
-                    new AttackDefenseTarget(),
-
-                _ => null
-            };
-
-            return calculator?.Compute(move, idx, context) ?? 0.5;
+            return _trainer.LearnFromGame(
+                this,
+                _gameHistory,
+                winner,
+                winLength);
         }
 
         public void SetDeterministic()
