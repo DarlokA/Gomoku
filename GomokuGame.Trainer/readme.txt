@@ -22,6 +22,9 @@ GomokuGame Trainer
 		Пример использования:
 		GomokuGame.Trainer.exe train algorithm:standard board:15 win:5 games:20000  mode:A  save:network_a_2
 
+		Пример использования E (LTT), без коррекции критического буфера:
+		GomokuGame.Trainer.exe train algorithm:standard board:9 win:5 games:20000 mode:E correction:Off save:network_e
+
 Режим 2. train algorithm:league (Игра с замороженным противником. Сеть по состоянию на конец предыдущего чанка)
 			board — размер доски (по умолчанию 9)
 			win — длина выигрышной линии (по умолчанию 5)
