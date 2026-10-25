@@ -8,6 +8,7 @@ namespace GomokuGame.Trainer
         public string Algorithm { get; set; }
         public string SaveName { get; set; }
         public int Chunk { get; set; }
+        public int Seed { get; set; }
         public LearningMode Mode { get; set; }
 
         public GradientTrainingArguments Gradient { get; set; }

@@ -142,6 +142,8 @@ namespace GomokuGame.Trainer
                 SaveName = GetArgString(args, "save", "network"),
                 Chunk = GetArg(args, "chunk", 500),
 
+                Seed = GetArg(args, "seed", 0),
+
                 Mode = ParseLearningMode(
                     GetArgString(args, "mode", "C"))
             };
@@ -428,8 +430,8 @@ namespace GomokuGame.Trainer
             }
 
             var ai = continuing
-                ? AiPlayer.LoadOrCreate(savePath)
-                : AiPlayer.CreateFresh();
+                    ? AiPlayer.LoadOrCreate(savePath, arguments.Seed)
+                    : AiPlayer.CreateFresh(arguments.Seed);
 
             const int SnapshotInterval = 25_000; // можешь сделать 10_000, если диска не жалко
             const int PlateauWindowChunks = 20;  // 20 чанков * 500 партий = 10 000 партий на окно
@@ -504,6 +506,9 @@ namespace GomokuGame.Trainer
             Console.WriteLine($"Correction: {ai.Correction}");
             Console.WriteLine($"Chunk:    {chunk}");
             Console.WriteLine($"Algorithm: {algorithm}");
+            Console.WriteLine(arguments.Seed == 0
+                        ? "Seed:     случайный"
+                        : $"Seed:     {arguments.Seed}");
             if (leagueMode)
             {
                 Console.WriteLine($"WarmUp:   {warmupGames}");
