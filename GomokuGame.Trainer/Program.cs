@@ -250,6 +250,7 @@ namespace GomokuGame.Trainer
                 "B" => LearningMode.DiscountedOutcome,
                 "C" => LearningMode.DiscountedWithShaping,
                 "D" => LearningMode.AttackDefenseShaping,
+                "E" => LearningMode.LocalTactical,
                 _ => LearningMode.DiscountedWithShaping
             };
         }
