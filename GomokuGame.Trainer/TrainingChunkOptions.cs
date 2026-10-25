@@ -7,7 +7,7 @@
     {
         public string Algorithm { get; }
         public GameSettings Game { get; }
-        public int Games { get; }
+        public int Games { get; set; }
         public LeagueTrainingSettings League { get; }
 
         public TrainingChunkOptions(

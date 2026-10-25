@@ -404,6 +404,11 @@ namespace GomokuGame.Trainer
             bool showDemo = options.ShowDemo;
             string algorithm = arguments.Algorithm;
             int chunk = arguments.Chunk;
+            if (chunk <= 0)
+            {
+                Console.WriteLine("Размер чанка должен быть больше нуля.");
+                return;
+            }
 
             int warmupGames = options.League.WarmupGames;
             int snapshotEvery = options.League.SnapshotEvery;
@@ -510,7 +515,7 @@ namespace GomokuGame.Trainer
             double lastLoss = ai.LastAverageLoss, avg_movies = 0;
 
             var sw = Stopwatch.StartNew();
-            int numChunks = infinite ? 0 : games / chunk;
+            long sessionGames = 0;
 
             long lastCriticalBufferSize = ai.CriticalBuffer.BufferSize;
             long lastCriticalSamplesLearnedCount = ai.CriticalBuffer.LearnedSamplesCount;
@@ -526,11 +531,27 @@ namespace GomokuGame.Trainer
                 league: options.League);
 
             int b = 0;
-            while (infinite || b < numChunks)
+            while (infinite || sessionGames < games)
             {
+                int currentChunkSize = infinite
+                                        ? chunk
+                                        : (int)Math.Min((long)chunk, games - sessionGames);
+                chunkOptions.Games = currentChunkSize;
+
                 TimeSpan before = sw.Elapsed;
 
                 TrainingStats stats = trainChunk(ai, chunkOptions);
+
+                long playedInChunk = (long)stats.XWins + stats.OWins + stats.Draws;
+
+                if (playedInChunk <= 0)
+                {
+                    Console.WriteLine(
+                        "Чанк не вернул ни одной завершённой партии. Обучение остановлено.");
+                    break;
+                }
+
+                sessionGames += playedInChunk;
 
                 TimeSpan after = sw.Elapsed;
 
@@ -538,7 +559,7 @@ namespace GomokuGame.Trainer
                 int CriticalSamplesLearnedCount = ai.CriticalBuffer.LearnedSamplesCount;
                 double AverageAttemptsToLearn = ai.CriticalBuffer.AverageAttemptsToLearn;
 
-                TimeSpan delta = (after - before) / chunk;
+                TimeSpan delta = (after - before) / (double)playedInChunk;
 
                 totalMovies += stats.totalMoves;
                 totalMissedWins += stats.MissedWins;
@@ -556,7 +577,7 @@ namespace GomokuGame.Trainer
                 lastLoss = stats.LastAverageLoss;
 
 
-                long done = gamesDoneBeforeThisSession + (long)(b + 1) * chunk;
+                long done = gamesDoneBeforeThisSession + sessionGames;
 
                 // Синхронизируем накопленную статистику в самой сети — она уйдёт в файл
                 // при следующем ai.Save() (периодический чекпоинт чуть ниже или снимок).
@@ -667,14 +688,16 @@ namespace GomokuGame.Trainer
 
             if (!infinite)   // финальная сводка только для конечного прогона, по статистике ЭТОЙ сессии
             {
+                double denominator = Math.Max(1L, sessionGames);
+
                 Console.WriteLine();
                 Console.WriteLine("=== FINAL (эта сессия) ===");
-                Console.WriteLine($"Games:        {games:N0}");
-                Console.WriteLine($"X wins:       {sessionXWins,6:N0} ({(double)sessionXWins / games:P1})");
-                Console.WriteLine($"O wins:       {sessionOWins,6:N0} ({(double)sessionOWins / games:P1})");
-                Console.WriteLine($"Draws:        {sessionDraws,6:N0} ({(double)sessionDraws / games:P1})");
-                Console.WriteLine($"Missed wins:  {sessionMissedWins,6:N0} (avg {(double)sessionMissedWins / games:F2} за партию)");
-                Console.WriteLine($"Movies:       {sessionTotalMovies,6:N0} ({(double)sessionTotalMovies / games:F1})");
+                Console.WriteLine($"Games:        {sessionGames:N0}");
+                Console.WriteLine($"X wins:       {sessionXWins,6:N0} ({sessionXWins / denominator:P1})");
+                Console.WriteLine($"O wins:       {sessionOWins,6:N0} ({sessionOWins / denominator:P1})");
+                Console.WriteLine($"Draws:        {sessionDraws,6:N0} ({sessionDraws / denominator:P1})");
+                Console.WriteLine($"Missed wins:  {sessionMissedWins,6:N0} (avg {sessionMissedWins / denominator:F2} за партию)");
+                Console.WriteLine($"Movies:       {sessionTotalMovies,6:N0} ({sessionTotalMovies / denominator:F1})");
                 Console.WriteLine($"Last loss:    {lastLoss:F4}");
                 Console.WriteLine($"Time:         {sw.Elapsed.TotalSeconds:F1}s");
                 Console.WriteLine();
@@ -696,6 +719,12 @@ namespace GomokuGame.Trainer
             int boardSize = arguments.Game.BoardSize;
             int winLength = arguments.Game.WinLength;
             int chunk = arguments.Chunk;
+            if (chunk <= 0)
+            {
+                Console.WriteLine("Размер чанка должен быть больше нуля.");
+                return;
+            }
+
             string saveName = arguments.SaveName;
             LearningMode trainingMode = arguments.Mode;
 
