@@ -1,5 +1,7 @@
 ﻿using GomokuGame.Models;
 using GomokuGame.Services;
+using GomokuGame.AI.Training;
+using GomokuGame.AI.Training.Targets;
 using System;
 using System.Collections.Generic;
 
@@ -452,75 +454,32 @@ namespace GomokuGame.AI
                 return Math.Clamp(move.Criticality, 0.0, 1.0);
             }
 
-            switch (Mode)
+            var context = new TrainingContext(
+                                winner,
+                                lastWinnerIdx,
+                                _winLength,
+                                Discount,
+                                AttackWeight,
+                                DefenseWeight);
+
+            ITrainingTarget? calculator = Mode switch
             {
-                case LearningMode.LineLengthOnly:
-                    return ComputeLineLengthTarget(move);
+                LearningMode.LineLengthOnly =>
+                    new LineLengthTarget(),
 
-                case LearningMode.DiscountedOutcome:
-                    return ComputeDiscountedTarget(move, idx, lastWinnerIdx, winner);
+                LearningMode.DiscountedOutcome =>
+                    new DiscountedOutcomeTarget(),
 
-                case LearningMode.DiscountedWithShaping:
-                    double baseT = ComputeDiscountedTarget(move, idx, lastWinnerIdx, winner);
-                    double shaping = ComputeShaping(move);
-                    return Math.Clamp(baseT + shaping, 0.0, 1.0);
-                case LearningMode.AttackDefenseShaping:
-                    return ComputeAttackDefenseTarget(move, idx, lastWinnerIdx, winner);
-                default:
-                    return 0.5;
-            }
-        }
+                LearningMode.DiscountedWithShaping =>
+                    new DiscountedWithShapingTarget(),
 
-        private double ComputeAttackDefenseTarget(
-            MoveRecord move, int idx, int lastWinnerIdx, CellState winner)
-        {
-            // База: дисконтированный исход
-            double baseTarget = ComputeDiscountedTarget(move, idx, lastWinnerIdx, winner);
+                LearningMode.AttackDefenseShaping =>
+                    new AttackDefenseTarget(),
 
-            // Shaping: атака — свой потенциал, защита — потенциал противника
-            // winLength — надо знать! Возьмём извне.
-            double attack = Math.Min(1.0, (double)move.AttackPotential / _winLength);
-            double defense = Math.Min(1.0, (double)move.OpponentPotential / _winLength);
+                _ => null
+            };
 
-            // Плохо, если потенциал противника ВЫСОКИЙ
-            double shaping = AttackWeight * attack - DefenseWeight * defense;
-
-            return Math.Clamp(baseTarget + shaping, 0.0, 1.0);
-        }
-
-        /// <summary>
-        /// Reward только за длину линии. Победа / поражение — не учитываются.
-        /// </summary>
-        private static double ComputeLineLengthTarget(MoveRecord move)
-        {
-            // lineLen = 1 → 0.0; 2 → 0.25; 3 → 0.5; 4 → 0.75; 5 → 1.0
-            double t = (move.LineLengthAfter - 1) / 4.0;
-            return Math.Clamp(t, 0.0, 1.0);
-        }
-
-        /// <summary>
-        /// Дисконтированный финальный исход. Ходы победителя: 0.5 + 0.5·γ^dist. Остальные: 0.5.
-        /// </summary>
-        private double ComputeDiscountedTarget(MoveRecord move, int idx, int lastWinnerIdx, CellState winner)
-        {
-            if (winner == CellState.Empty) return 0.5;
-
-            if (move.Player == winner && lastWinnerIdx >= 0)
-            {
-                int dist = lastWinnerIdx - idx;
-                return 0.5 + 0.5 * Math.Pow(Discount, dist);
-            }
-            return 0.5;
-        }
-
-        /// <summary>
-        /// Shaping: небольшой бонус за длину линии. Максимум +0.1.
-        /// </summary>
-        private static double ComputeShaping(MoveRecord move)
-        {
-            // lineLen = 1 → 0; 2 → 0.025; 3 → 0.05; 4 → 0.075; 5 → 0.1
-            double t = (move.LineLengthAfter - 1) / 4.0;
-            return 0.1 * Math.Clamp(t, 0.0, 1.0);
+            return calculator?.Compute(move, idx, context) ?? 0.5;
         }
 
         public void SetDeterministic()
