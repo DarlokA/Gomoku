@@ -19,27 +19,35 @@ namespace GomokuGame.Trainer
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("Использование: GomokuGame.Trainer.exe <train|match|matchlog> ключ:значение ...");
+                Console.WriteLine(
+                    "Использование: GomokuGame.Trainer.exe " +
+                    "<train|match|matchlog> ключ:значение ...");
                 return;
             }
 
             string command = args[0];
+
             var tokens = Tokenize(args.Skip(1).ToArray());
-            var a = ParseKeyValueArgs(tokens);
+            var arguments = ParseKeyValueArgs(tokens);
 
             switch (command.ToLowerInvariant())
             {
                 case "train":
-                    RunTraining(a);
+                    RunTraining(ParseTrainingArguments(arguments));
                     break;
+
                 case "match":
-                    RunMatch(a);
+                    RunMatch(ParseMatchArguments(arguments));
                     break;
+
                 case "matchlog":
-                    RunMatchLog(a);
+                    RunMatchLog(ParseMatchLogArguments(arguments));
                     break;
+
                 default:
-                    Console.WriteLine($"!! Неизвестная команда: \"{command}\". Ожидалась train, match или matchlog.");
+                    Console.WriteLine(
+                        $"!! Неизвестная команда: \"{command}\". " +
+                        "Ожидалась train, match или matchlog.");
                     break;
             }
         }
@@ -118,6 +126,146 @@ namespace GomokuGame.Trainer
         private static string GetArgString(Dictionary<string, string> a, string key, string def)
             => a.TryGetValue(key, out var s) ? s : def;
 
+        private static TrainingArguments ParseTrainingArguments(
+            Dictionary<string, string> args)
+        {
+            string algorithm = GetArgString(
+                args, "algorithm", "standard");
+
+            var result = new TrainingArguments
+            {
+                Game = new GameSettings(
+                    GetArg(args, "board", 9),
+                    GetArg(args, "win", 5)),
+
+                Algorithm = algorithm,
+                SaveName = GetArgString(args, "save", "network"),
+                Chunk = GetArg(args, "chunk", 500),
+
+                Mode = ParseLearningMode(
+                    GetArgString(args, "mode", "C"))
+            };
+
+            if (algorithm.Equals(
+                "genetic",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                result.Genetic = ParseGeneticTrainingArguments(args);
+            }
+            else
+            {
+                result.Gradient = ParseGradientTrainingArguments(args);
+            }
+
+            return result;
+        }
+
+        private static GradientTrainingArguments
+            ParseGradientTrainingArguments(
+                Dictionary<string, string> args)
+        {
+            return new GradientTrainingArguments
+            {
+                Games = GetArg(args, "games", 10_000),
+                LearningRate = GetArgDouble(args, "lr", 0.001),
+                Epsilon = GetArgDouble(args, "epsilon", 0.3),
+
+                DecayExplicit = args.ContainsKey("decay"),
+                Decay = GetArgDouble(args, "decay", 0.9995),
+                DecayTargetFraction = GetArgDouble(
+                    args, "decayTarget", 0.85),
+
+                ShowDemo = GetArg(args, "demo", 1) == 1,
+
+                Correction = ParseCorrectionMode(
+                    GetArgString(args, "correction", "Full")),
+
+                League = new LeagueTrainingSettings(
+                    GetArg(args, "warmup", 500),
+                    GetArg(args, "snapshotEvery", 100))
+            };
+        }
+
+        private static GeneticTrainingArguments
+            ParseGeneticTrainingArguments(
+                Dictionary<string, string> args)
+        {
+            int population = GetArg(
+                args, "population", Environment.ProcessorCount);
+
+            return new GeneticTrainingArguments
+            {
+                Population = population,
+                EliteCount = GetArg(
+                    args, "eliteCount", Math.Max(1, population / 2)),
+
+                MutationSigma = GetArgDouble(
+                    args, "mutationSigma", 0.05),
+
+                GamesPerPair = GetArg(args, "gamesPerPair", 100),
+                MaxCycles = GetArg(args, "cycles", 0)
+            };
+        }
+
+        private static MatchArguments ParseMatchArguments(
+            Dictionary<string, string> args)
+        {
+            return new MatchArguments
+            {
+                Game = new GameSettings(
+                    GetArg(args, "board", 9),
+                    GetArg(args, "win", 5)),
+
+                Games = GetArg(args, "games", 1000),
+                FileX = GetArgString(args, "x", "network"),
+                FileO = GetArgString(args, "o", "network")
+            };
+        }
+
+        private static MatchLogArguments ParseMatchLogArguments(
+            Dictionary<string, string> args)
+        {
+            return new MatchLogArguments
+            {
+                Game = new GameSettings(
+                    GetArg(args, "board", 15),
+                    GetArg(args, "win", 5)),
+
+                FileX = GetArgString(args, "x", "network"),
+                FileO = GetArgString(args, "o", "network"),
+
+                LogFile = args.TryGetValue("log", out var logFile)
+                    ? logFile
+                    : null,
+
+                Epsilon = GetArgDouble(args, "epsilon", 0.0)
+            };
+        }
+
+        private static LearningMode ParseLearningMode(string value)
+        {
+            return value.ToUpperInvariant() switch
+            {
+                "A" => LearningMode.LineLengthOnly,
+                "B" => LearningMode.DiscountedOutcome,
+                "C" => LearningMode.DiscountedWithShaping,
+                "D" => LearningMode.AttackDefenseShaping,
+                _ => LearningMode.DiscountedWithShaping
+            };
+        }
+
+        private static CorrectionMode ParseCorrectionMode(string value)
+        {
+            return value.ToUpperInvariant() switch
+            {
+                "FULL" => CorrectionMode.Full,
+                "ONCE" => CorrectionMode.Once,
+                "OFF" => CorrectionMode.Off,
+                "ALL" => CorrectionMode.All,
+                _ => CorrectionMode.Full
+            };
+        }
+
         static void SaveSnapshotAtomic(AiPlayer ai, string saveName, long done)
         {
             string finalPath = GetSavePath($"{saveName}_ep{done}");
@@ -154,87 +302,114 @@ namespace GomokuGame.Trainer
 
         // ============ TRAIN ============
 
-        private static void RunTraining(Dictionary<string, string> a)
+        private static TrainingStats TrainStandardChunk(
+            AiPlayer ai,
+            TrainingChunkOptions options)
         {
-            int boardSize = GetArg(a, "board", 9);
-            int winLength = GetArg(a, "win", 5);
-            int games = GetArg(a, "games", 10_000);
-            bool infinite = games <= 0;
-            double lr = GetArgDouble(a, "lr", 0.001);
-            double epsilon = GetArgDouble(a, "epsilon", 0.3);
-            double decayTargetFraction = GetArgDouble(a, "decayTarget", 0.85);
-            bool decayExplicit = a.ContainsKey("decay");
-            double decay = GetArgDouble(a, "decay", 0.9995); // дефолт на случай infinite/явного decay ниже не пересчитывается
-            string modeStr = GetArgString(a, "mode", "C");
-            string saveName = GetArgString(a, "save", "network");
-            bool showDemo = GetArg(a, "demo", 1) == 1;
-            string algorithm = GetArgString(a, "algorithm", "standard");
-            int chunk = GetArg(a, "chunk", 500);
-            int warmupGames = GetArg(a, "warmup", 500);
-            int snapshotEvery = GetArg(a, "snapshotEvery", 100);
-            string correctionModeStr = GetArgString(a, "correction", "Full");
+            return GameSession.TrainMany(
+                ai,
+                options.Games,
+                options.Game.BoardSize,
+                options.Game.WinLength,
+                progressEvery: options.Games);
+        }
 
-            bool leagueMode = algorithm.Equals("league", StringComparison.OrdinalIgnoreCase);
-            bool geneticMode = algorithm.Equals("genetic", StringComparison.OrdinalIgnoreCase);
+        private static TrainingStats TrainLeagueChunk(
+            AiPlayer ai,
+            TrainingChunkOptions options)
+        {
+            return GameSession.TrainManyLeague(
+                ai,
+                options.Games,
+                options.Game.BoardSize,
+                options.Game.WinLength,
+                options.League.WarmupGames,
+                options.League.SnapshotEvery,
+                progressEvery: options.Games);
+        }
 
-            if (geneticMode)
+        private static TrainingStats TrainBotChunk(
+            AiPlayer ai,
+            TrainingChunkOptions options)
+        {
+            return GameSession.TrainManyAgainstBot(
+                ai,
+                options.Games,
+                options.Game.BoardSize,
+                options.Game.WinLength,
+                chunkSize: options.Games);
+        }
+
+        private static void RunTraining(TrainingArguments arguments)
+        {
+            switch (arguments.Algorithm.ToLowerInvariant())
             {
-                int population = GetArg(a, "population", Environment.ProcessorCount);
-                int eliteCount = GetArg(a, "eliteCount", Math.Max(1, population / 2));
-                double mutationSigma = GetArgDouble(a, "mutationSigma", 0.05);
-                int gamesPerPair = GetArg(a, "gamesPerPair", 100);
-                int maxCycles = GetArg(a, "cycles", 0);
-                bool infiniteCycles = maxCycles <= 0;
+                case "genetic":
+                    RunGeneticTraining(arguments);
+                    break;
 
-                var trainingMode = modeStr.ToUpperInvariant() switch
-                {
-                    "A" => LearningMode.LineLengthOnly,
-                    "B" => LearningMode.DiscountedOutcome,
-                    "C" => LearningMode.DiscountedWithShaping,
-                    "D" => LearningMode.AttackDefenseShaping,
-                    _ => LearningMode.DiscountedWithShaping
-                };
+                case "league":
+                    RunLeagueTraining(arguments);
+                    break;
 
-                Console.WriteLine("=== GomokuGame Trainer / TRAIN (genetic) ===");
-                Console.WriteLine($"Board:         {boardSize}x{boardSize}");
-                Console.WriteLine($"Win len:       {winLength}");
-                Console.WriteLine($"Chunk games:   {chunk}");
-                Console.WriteLine($"Population:    {population}");
-                Console.WriteLine($"Elite count:   {eliteCount}");
-                Console.WriteLine($"Mutation sigma:{mutationSigma}");
-                Console.WriteLine($"Training mode: {trainingMode}");
-                Console.WriteLine($"Games/pair:    {gamesPerPair}");
-                Console.WriteLine($"Cycles:        {(infiniteCycles ? "∞ (стоп — Ctrl+C)" : maxCycles.ToString())}");
-                Console.WriteLine($"Save as:       {saveName}.json");
-                Console.WriteLine();
+                case "bot":
+                    RunBotTraining(arguments);
+                    break;
 
-                string? existingPath = File.Exists(GetSavePath(saveName)) ? GetSavePath(saveName) : null;
-
-                var trainer = new GeneticTrainer(population, eliteCount, mutationSigma,
-                    gamesPerPair, boardSize, winLength, chunk, trainingMode, saveName);
-
-                trainer.InitializePopulation(existingPath);
-
-                int cycle = 0;
-                while (infiniteCycles || cycle < maxCycles)
-                {
-                    var stop_watch = Stopwatch.StartNew();
-                    trainer.RunChunkCycle();
-                    stop_watch.Stop();
-
-                    var best = trainer.GetBest();
-                    Console.WriteLine(
-                        $"Cycle {cycle,6:N0} | best score {best.Score,6:F1} | " +
-                        $"W/D/L {best.Wins}/{best.Draws}/{best.Losses} | time {stop_watch.Elapsed.TotalSeconds:F1}s");
-
-                    cycle++;
-                }
-
-                if (!infiniteCycles)
-                    Console.WriteLine($"=== Готово: {maxCycles} циклов эволюции пройдено ===");
-                // при infiniteCycles выход — только Ctrl+C, как и раньше
-                return;
+                default:
+                    RunStandardTraining(arguments);
+                    break;
             }
+        }
+
+        private static void RunStandardTraining(
+            TrainingArguments arguments)
+        {
+            RunGradientTraining(arguments, TrainStandardChunk);
+        }
+
+        private static void RunLeagueTraining(
+            TrainingArguments arguments)
+        {
+            RunGradientTraining(arguments, TrainLeagueChunk);
+        }
+
+        private static void RunBotTraining(
+            TrainingArguments arguments)
+        {
+            RunGradientTraining(arguments, TrainBotChunk);
+        }
+
+        private static void RunGradientTraining(
+            TrainingArguments arguments,
+            Func<AiPlayer, TrainingChunkOptions, TrainingStats> trainChunk)
+        {
+            GradientTrainingArguments options = arguments.Gradient;
+
+            int boardSize = arguments.Game.BoardSize;
+            int winLength = arguments.Game.WinLength;
+
+            int games = options.Games;
+            bool infinite = games <= 0;
+
+            double lr = options.LearningRate;
+            double epsilon = options.Epsilon;
+
+            double decayTargetFraction = options.DecayTargetFraction;
+            bool decayExplicit = options.DecayExplicit;
+            double decay = options.Decay;
+
+            string saveName = arguments.SaveName;
+            bool showDemo = options.ShowDemo;
+            string algorithm = arguments.Algorithm;
+            int chunk = arguments.Chunk;
+
+            int warmupGames = options.League.WarmupGames;
+            int snapshotEvery = options.League.SnapshotEvery;
+
+            bool leagueMode = algorithm.Equals(
+                "league",
+                StringComparison.OrdinalIgnoreCase);
 
             string savePath = GetSavePath(saveName);
             bool continuing = File.Exists(savePath);
@@ -310,23 +485,8 @@ namespace GomokuGame.Trainer
                     $"(X {totalXWins:N0} / O {totalOWins:N0} / Draw {totalDraws:N0}, missed wins {totalMissedWins:N0})");
             }
 
-            ai.Mode = modeStr.ToUpperInvariant() switch
-            {
-                "A" => LearningMode.LineLengthOnly,
-                "B" => LearningMode.DiscountedOutcome,
-                "C" => LearningMode.DiscountedWithShaping,
-                "D" => LearningMode.AttackDefenseShaping,
-                _ => LearningMode.DiscountedWithShaping
-            };
-
-            ai.Correction = correctionModeStr.ToUpperInvariant() switch
-            {
-                "FULL" => CorrectionMode.Full,
-                "ONCE" => CorrectionMode.Once,
-                "OFF" => CorrectionMode.Off,
-                "ALL" => CorrectionMode.All,
-                _ => CorrectionMode.Full
-            };
+            ai.Mode = arguments.Mode;
+            ai.Correction = options.Correction;
 
             Console.WriteLine("=== GomokuGame Trainer / TRAIN ===");
             Console.WriteLine($"Board:   {boardSize}x{boardSize}");
@@ -358,17 +518,19 @@ namespace GomokuGame.Trainer
             Console.WriteLine($"{"Done",12} | {"X",10} {"O",10} {"Draw",8} | {"Loss",7} | {"Eps",5} | {"Missed",10} | {"Time",8} | {"PerParty time",7} | {"PerParty movies",7}");
             Console.WriteLine(new string('-', 130));
 
+            var chunkOptions = new TrainingChunkOptions(
+                algorithm: algorithm,
+                game: arguments.Game,
+                games: chunk,
+                league: options.League);
+
             int b = 0;
             while (infinite || b < numChunks)
             {
                 TimeSpan before = sw.Elapsed;
-                TrainingStats stats;
-                if (algorithm.Equals("bot", StringComparison.OrdinalIgnoreCase))
-                    stats = GameSession.TrainManyAgainstBot(ai, chunk, boardSize, winLength, chunkSize: chunk);
-                else if (leagueMode)
-                    stats = GameSession.TrainManyLeague(ai, chunk, boardSize, winLength, warmupGames, snapshotEvery, progressEvery: chunk);
-                else
-                    stats = GameSession.TrainMany(ai, chunk, boardSize, winLength, progressEvery: chunk);
+
+                TrainingStats stats = trainChunk(ai, chunkOptions);
+
                 TimeSpan after = sw.Elapsed;
 
                 int CriticalBufferSize = ai.CriticalBuffer.BufferSize;
@@ -491,7 +653,6 @@ namespace GomokuGame.Trainer
                         plateauNoted = false; // loss снова двигается — снимаем пометку
                     }
                 }
-
                 lock (SaveLock)
                 {
                     string checkpointPath = GetSavePath(saveName);
@@ -501,7 +662,6 @@ namespace GomokuGame.Trainer
 
                 b++;
             }
-
             sw.Stop();
 
             if (!infinite)   // финальная сводка только для конечного прогона, по статистике ЭТОЙ сессии
@@ -527,15 +687,73 @@ namespace GomokuGame.Trainer
             Console.WriteLine($"Saved to:  {savePath}");
         }
 
+        private static void RunGeneticTraining(
+            TrainingArguments arguments)
+        {
+            GeneticTrainingArguments options = arguments.Genetic;
+
+            int boardSize = arguments.Game.BoardSize;
+            int winLength = arguments.Game.WinLength;
+            int chunk = arguments.Chunk;
+            string saveName = arguments.SaveName;
+            LearningMode trainingMode = arguments.Mode;
+
+            int population = options.Population;
+            int eliteCount = options.EliteCount;
+            double mutationSigma = options.MutationSigma;
+            int gamesPerPair = options.GamesPerPair;
+            int maxCycles = options.MaxCycles;
+            bool infiniteCycles = maxCycles <= 0;
+
+            Console.WriteLine("=== GomokuGame Trainer / TRAIN (genetic) ===");
+            Console.WriteLine($"Board:         {boardSize}x{boardSize}");
+            Console.WriteLine($"Win len:       {winLength}");
+            Console.WriteLine($"Chunk games:   {chunk}");
+            Console.WriteLine($"Population:    {population}");
+            Console.WriteLine($"Elite count:   {eliteCount}");
+            Console.WriteLine($"Mutation sigma:{mutationSigma}");
+            Console.WriteLine($"Training mode: {trainingMode}");
+            Console.WriteLine($"Games/pair:    {gamesPerPair}");
+            Console.WriteLine($"Cycles:        {(infiniteCycles ? "∞ (стоп — Ctrl+C)" : maxCycles.ToString())}");
+            Console.WriteLine($"Save as:       {saveName}.json");
+            Console.WriteLine();
+
+            string? existingPath = File.Exists(GetSavePath(saveName)) ? GetSavePath(saveName) : null;
+
+            var trainer = new GeneticTrainer(population, eliteCount, mutationSigma,
+                gamesPerPair, boardSize, winLength, chunk, trainingMode, saveName);
+
+            trainer.InitializePopulation(existingPath);
+
+            int cycle = 0;
+            while (infiniteCycles || cycle < maxCycles)
+            {
+                var stop_watch = Stopwatch.StartNew();
+                trainer.RunChunkCycle();
+                stop_watch.Stop();
+
+                var best = trainer.GetBest();
+                Console.WriteLine(
+                    $"Cycle {cycle,6:N0} | best score {best.Score,6:F1} | " +
+                    $"W/D/L {best.Wins}/{best.Draws}/{best.Losses} | time {stop_watch.Elapsed.TotalSeconds:F1}s");
+
+                cycle++;
+            }
+
+            if (!infiniteCycles)
+                Console.WriteLine($"=== Готово: {maxCycles} циклов эволюции пройдено ===");
+        }
+
+
         // ============ MATCH ============
 
-        private static void RunMatch(Dictionary<string, string> a)
+        private static void RunMatch(MatchArguments arguments)
         {
-            int boardSize = GetArg(a, "board", 9);
-            int winLength = GetArg(a, "win", 5);
-            int games = GetArg(a, "games", 1000);
-            string fileX = GetArgString(a, "x", "network");
-            string fileO = GetArgString(a, "o", "network");
+            int boardSize = arguments.Game.BoardSize;
+            int winLength = arguments.Game.WinLength;
+            int games = arguments.Games;
+            string fileX = arguments.FileX;
+            string fileO = arguments.FileO;
 
             var aiX = LoadOrRandom(fileX, seed: 1);
             var aiO = LoadOrRandom(fileO, seed: 2);
@@ -566,14 +784,14 @@ namespace GomokuGame.Trainer
                               $"({sw.Elapsed.TotalMilliseconds / games:F1}ms/game)");
         }
 
-        private static void RunMatchLog(Dictionary<string, string> a)
+        private static void RunMatchLog(MatchLogArguments arguments)
         {
-            int boardSize = GetArg(a, "board", 15);
-            int winLength = GetArg(a, "win", 5);
-            string fileX = GetArgString(a, "x", "network");
-            string fileO = GetArgString(a, "o", "network");
-            string? logFile = a.TryGetValue("log", out var lf) ? lf : null;
-            double epsilon = GetArgDouble(a, "epsilon", 0.0);
+            int boardSize = arguments.Game.BoardSize;
+            int winLength = arguments.Game.WinLength;
+            string fileX = arguments.FileX;
+            string fileO = arguments.FileO;
+            string? logFile = arguments.LogFile;
+            double epsilon = arguments.Epsilon;
 
             var aiX = LoadOrRandom(fileX, seed: 1);
             var aiO = LoadOrRandom(fileO, seed: 2);
