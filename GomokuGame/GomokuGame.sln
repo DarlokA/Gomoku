@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GomokuGame.Visualizer", "..
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GomokuGame.CriticalSamplesBrowser", "..\GomokuGame.CriticalSamplesBrowser\GomokuGame.CriticalSamplesBrowser.csproj", "{F433E6AA-35F9-4416-8C16-4028392DEFB4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GomokuGame.Trainer.MCP", "..\GomokuGame.Trainer.MCP\GomokuGame.Trainer.MCP.csproj", "{120BB743-4EA7-4215-B7CD-2E9B3C9AB26C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -37,6 +39,10 @@ Global
 		{F433E6AA-35F9-4416-8C16-4028392DEFB4}.Debug|x64.ActiveCfg = Debug|x64
 		{F433E6AA-35F9-4416-8C16-4028392DEFB4}.Release|x64.ActiveCfg = Release|x64
 		{F433E6AA-35F9-4416-8C16-4028392DEFB4}.Release|x64.Build.0 = Release|x64
+		{120BB743-4EA7-4215-B7CD-2E9B3C9AB26C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{120BB743-4EA7-4215-B7CD-2E9B3C9AB26C}.Debug|x64.Build.0 = Debug|Any CPU
+		{120BB743-4EA7-4215-B7CD-2E9B3C9AB26C}.Release|x64.ActiveCfg = Release|x64
+		{120BB743-4EA7-4215-B7CD-2E9B3C9AB26C}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
