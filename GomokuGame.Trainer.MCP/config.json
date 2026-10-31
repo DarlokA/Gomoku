@@ -1,0 +1,8 @@
+{
+  "TrainerPath": "C:\\Users\\Darlo.DARLOKA\\source\\repos\\Gomoku\\GomokuGame.Trainer\\bin\\x64\\Release\\net8.0-windows\\GomokuGame.Trainer.exe",
+  "NetworksPath": "C:\\Users\\Darlo.DARLOKA\\OneDrive\\Документы\\My Games\\GomokuGame\\",
+  "PatternLogsPath": "C:\\Users\\Darlo.DARLOKA\\OneDrive\\Документы\\My Games\\GomokuGame\\pattern_logs\\",
+  "LiveLogsPath": "C:\\Users\\Darlo.DARLOKA\\OneDrive\\Документы\\My Games\\GomokuGame\\logs\\",
+  "DemoGamesEnabled": true,
+  "SnapshotEvery": 100
+}
