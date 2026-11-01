@@ -19,15 +19,44 @@ namespace GomokuGame.Trainer.MCP
                 return;
             }
             
-            // 2. Анализ CSV-лога: <лог> напрямую (завершается после анализа)
+            // 2. Команды: start, stop, status, help — завершают после выполнения
             if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false)
+            {
+                var command = args[0].ToLowerInvariant();
+                
+                switch (command)
+                {
+                    case "start":
+                        Console.WriteLine("Ошибка: Укажите сеть (A/B/C/D/E)");
+                        break;
+                    case "stop":
+                        await StopTraining();
+                        Console.WriteLine("[INFO] Процесс остановлен.");
+                        break;
+                    case "status":
+                        PrintEnvironmentInfo();
+                        Console.WriteLine($"Текущий статус: {(GetTrainer().IsRunning ? "ЗАПУЩЕН" : "ОСТАНОВЛЕН")}");
+                        break;
+                    case "help":
+                    case "-h":
+                        PrintHelp();
+                        break;
+                    default:
+                        Console.WriteLine("Неизвестная команда. Введите 'start', 'stop', 'status' или 'help'.");
+                        break;
+                }
+                return;
+            }
+            
+            // 3. Анализ CSV-лога: <лог> напрямую (завершается после анализа)
+            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false && args[0].ToLowerInvariant() != "start" && args[0].ToLowerInvariant() != "stop" && args[0].ToLowerInvariant() != "status" && args[0].ToLowerInvariant() != "help")
             {
                 var cliAnalyzer = new CliAnalyzer();
                 cliAnalyzer.Analyze(args[0]);
                 return;
             }
             
-            // 3. Явная команда анализа: analyze <лог> (завершается после анализа)
+            // 4. Явная команда анализа: analyze <лог> (завершается после анализа)
             if (args.Length >= 2 && args[0].ToLowerInvariant() == "analyze" && !string.IsNullOrEmpty(args[1]) && args[0].StartsWith("--", StringComparison.Ordinal) == false)
             {
                 var cliAnalyzer = new CliAnalyzer();
