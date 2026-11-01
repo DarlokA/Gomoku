@@ -17,8 +17,8 @@ namespace GomokuGame.Trainer.MCP.LogAnalyzers
     public sealed class FieldCountMismatchException : Exception
     {
         public int LineNumber { get; set; }
-        public string MissingColumn { get; set; }
-        public List<string> ExtraColumns { get; set; }
+        public string MissingColumn { get; set; } = "неизвестно";
+        public List<string> ExtraColumns { get; set; } = new List<string>();
 
         public FieldCountMismatchException(string message) 
             : base(message)
@@ -41,7 +41,7 @@ namespace GomokuGame.Trainer.MCP.LogAnalyzers
     public sealed class InvalidFieldException : Exception
     {
         public int LineNumber { get; set; }
-        public string FieldName { get; set; }
+        public string FieldName { get; set; } = string.Empty;
 
         public InvalidFieldException(string message) : base(message) { }
 

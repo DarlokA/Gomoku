@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GomokuGame.Trainer.MCP.Commands;
 
 namespace GomokuGame.Trainer.MCP.Services
 {
@@ -15,6 +16,7 @@ namespace GomokuGame.Trainer.MCP.Services
     /// </summary>
     public sealed class TrainerController : ITrainerController
     {
+        private static readonly CultureInfo _ci = CultureInfo.InvariantCulture;
         private Process? _trainerProcess;
         private readonly object _lock = new();
 
@@ -27,24 +29,25 @@ namespace GomokuGame.Trainer.MCP.Services
         public string? LastOutput { get; private set; }
 
         /// <inheritdoc/>
-        public async Task StartTrainingAsync(
+        public async Task TrainAsync(
+            ITrainCommand command,
             string network,
             int games,
             string? saveName = null,
             int seed = 42,
             double learningRate = 0.01)
         {
-            // Если уже запущено — останавливаем предыдущий процесс
-            if (IsRunning)
-            {
-                Console.WriteLine("[WARN] Обучение уже запущено. Остановка предыдущего процесса...");
-                await StopTrainingAsync();
-            }
+            Console.WriteLine($"=== Запуск команды '{command.CommandName}' ===");
+            Console.WriteLine($"Сеть:     {network}");
+            Console.WriteLine($"Партии:   {games:N0} {(games == 0 ? "(бесконечно)" : "")}");
+            Console.WriteLine($"Seed:     {seed}");
+            Console.WriteLine($"LearningRate: {learningRate:F4}");
+            if (!string.IsNullOrWhiteSpace(saveName))
+                Console.WriteLine($"SaveName: {saveName}");
 
             var ci = CultureInfo.InvariantCulture;
             var args = new List<string>();
 
-            // Аргументы для запуска тренера
             args.Add("train");
             args.Add(network);
             args.Add(games.ToString(ci));
@@ -56,18 +59,70 @@ namespace GomokuGame.Trainer.MCP.Services
             if (!string.IsNullOrWhiteSpace(saveName))
                 args.Add(saveName);
 
-            args.Add("1");                         // showDemo = true
-            args.Add("standard");                  // algorithm
-            args.Add("FULL");                      // correctionMode
+            args.Add("1");                     // showDemo = true
+            args.Add("standard");              // algorithm
+            args.Add("FULL");                 // correctionMode
 
-            args.Add("0");                        // chunk (в бесконечном режиме)
-            args.Add(500.ToString(ci));           // warmupGames
-            args.Add("100");                      // snapshotEvery
+            args.Add("0");                    // chunk (в бесконечном режиме)
+            args.Add(500.ToString(ci));      // warmupGames
+            args.Add("100");                  // snapshotEvery
 
-            Console.WriteLine($"[INFO] Запуск GomokuGame.Trainer.exe с аргументами: {string.Join(" ", args)}");
+            Console.WriteLine($"[INFO] Запуск GomokuGame.Trainer.exe с аргументами: {string.Join(" ", args)}\n");
 
             await RunTrainerAsync(args.ToArray());
         }
+
+        /// <inheritdoc/>
+        public async Task TrainAdvancedAsync(
+            ITrainCommand command,
+            string network,
+            Dictionary<string, string>? additionalArgs = null)
+        {
+            Console.WriteLine($"=== Запуск команды '{command.CommandName}' (advanced) ===");
+            Console.WriteLine($"Сеть:     {network}");
+
+            var args = new List<string>();
+
+            args.Add("train");
+            args.Add(network);
+            
+            var games = GetArgInt(additionalArgs, "games", 20000);
+            args.Add($"games:{games}");
+            args.Add($"lr:{GetArgDouble(additionalArgs, "lr", 0.01)}");
+            args.Add($"epsilon:{GetArgDouble(additionalArgs, "epsilon", 0.3)}");
+            args.Add($"decay:{GetArgDouble(additionalArgs, "decay", 0.995)}");
+            args.Add($"seed:{GetArgInt(additionalArgs, "seed", 42).ToString(_ci)}");
+
+            if (!string.IsNullOrWhiteSpace(GetArg(additionalArgs, "save")))
+                args.Add($"save:{GetArg(additionalArgs, "save")}");
+
+            args.Add("algorithm:standard");
+            args.Add("mode:C");                 // DiscountedWithShaping
+            args.Add("correction:FULL");        // CorrectionMode.Full
+            args.Add("chunk:500");              // размер чанка
+            args.Add("warmup:500");             // warmup партий
+            args.Add("snapshotEvery:100");      // снимки каждые N партий
+            args.Add("demo:1");                 // показывать демо игры
+            args.Add("board:9");                // размер доски
+            args.Add($"win:5");                 // длина победы
+
+            Console.WriteLine($"\nЗапуск GomokuGame.Trainer.exe с аргументами: {string.Join(" ", args)}\n");
+
+            await RunTrainerAsync(args.ToArray());
+        }
+
+        private string GetArg(Dictionary<string, string>? args, string key, string def = "")
+            => args?.ContainsKey(key) == true && !string.IsNullOrEmpty(args[key]) ? args[key] : def;
+
+        private double GetArgDouble(Dictionary<string, string>? args, string key, double def)
+            => args?.ContainsKey(key) == true && double.TryParse(
+                args[key], CultureInfo.InvariantCulture, out var v)
+                ? v : def;
+
+        private int GetArgInt(Dictionary<string, string>? args, string key, int def)
+            => args?.ContainsKey(key) == true && int.TryParse(
+                args[key], CultureInfo.InvariantCulture, out var v)
+                ? v : def;
 
         /// <inheritdoc/>
         public Task StopTrainingAsync()
@@ -105,7 +160,6 @@ namespace GomokuGame.Trainer.MCP.Services
         /// <inheritdoc/>
         public async Task RunTrainerAsync(string[] args)
         {
-            // Путь к исполняемому файлу тренера
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             var trainerPath = Path.Combine(baseDir, "GomokuGame.Trainer.exe");
 
@@ -117,50 +171,68 @@ namespace GomokuGame.Trainer.MCP.Services
 
             Console.WriteLine($"[INFO] Путь к тренеру: {trainerPath}");
 
-            // Запускаем процесс
             var psi = new ProcessStartInfo(trainerPath, string.Join(" ", args))
             {
-                UseShellExecute = false,
+                UseShellExecute = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                CreateNoWindow = true,
+                CreateNoWindow = false,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
 
-            Console.WriteLine($"[INFO] Запуск процесса...");
+            Console.WriteLine($"[INFO] Запуск процесса через ShellExecute...");
 
-            _trainerProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            _trainerProcess.OutputDataReceived += OnOutputReceived;
-            _trainerProcess.ErrorDataReceived += OnErrorReceived;
+            using var process = new Process { StartInfo = psi };
 
-            // Небольшая задержка для запуска перед началом чтения вывода
+            process.OutputDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Console.WriteLine($"[TRAINER] {e.Data}");
+                }
+            };
+
+            process.ErrorDataReceived += (sender, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    Console.WriteLine($"[ERROR TRAINER] {e.Data}");
+                }
+            };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
             await Task.Run(async () =>
             {
                 try
                 {
-                    _trainerProcess.Start();
-                    Thread.Sleep(100); // Небольшая пауза
-
-                    _trainerProcess.BeginOutputReadLine();
-                    _trainerProcess.BeginErrorReadLine();
-
-                    // Ждём завершения процесса или пока не будет вызван Stop
                     while (IsRunning)
                     {
                         await Task.Delay(100);
                     }
+                    
+                    if (process.ExitCode == 0)
+                    {
+                        Console.WriteLine($"\n[INFO] Процесс тренера завершён успешно (код: {process.ExitCode})");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"\n[WARN] Процесс тренера завершился с кодом: {process.ExitCode}");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ERROR] Ошибка при запуске: {ex.Message}");
+                    Console.WriteLine($"[ERROR] Процесс завершён с ошибкой: {ex.Message}");
                 }
             });
+
+            await process.WaitForExitAsync();
         }
 
-        /// <summary>
-        /// Получение статуса обучения.
-        /// </summary>
+        /// <inheritdoc/>
         public async Task<Models.TrainingState> GetStatusAsync()
         {
             if (!IsRunning)
@@ -170,14 +242,12 @@ namespace GomokuGame.Trainer.MCP.Services
 
             try
             {
-                // Читаем последние строки вывода для получения статуса
                 string? output = null;
                 if (_trainerProcess != null)
                 {
                     output = await _trainerProcess.StandardOutput.ReadToEndAsync();
                 }
 
-                // Парсим winrate и loss из последнего батча
                 double? lastLoss = null;
                 double? lastWinRate = null;
                 int? currentBatch = null;
@@ -196,7 +266,6 @@ namespace GomokuGame.Trainer.MCP.Services
                                 lastLoss = double.Parse(parts[1].Trim(), CultureInfo.InvariantCulture);
                         }
 
-                        // Winrate в логах без %, парсим напрямую
                         if (line.Contains("Winrate="))
                         {
                             var parts = line.Split('=', 1, StringSplitOptions.RemoveEmptyEntries);
@@ -233,29 +302,6 @@ namespace GomokuGame.Trainer.MCP.Services
             {
                 Console.WriteLine($"[ERROR] Ошибка получения статуса: {ex.Message}");
                 return new Models.TrainingState { Status = Models.TrainingStatus.Error };
-            }
-        }
-
-        /// <summary>
-        /// Обработка вывода тренера.
-        /// </summary>
-        private void OnOutputReceived(object? sender, DataReceivedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(e.Data))
-            {
-                LastOutput = e.Data;
-                Console.WriteLine(e.Data);
-            }
-        }
-
-        /// <summary>
-        /// Обработка ошибок тренера.
-        /// </summary>
-        private void OnErrorReceived(object? sender, DataReceivedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(e.Data))
-            {
-                Console.WriteLine($"[ERROR] {e.Data}");
             }
         }
     }

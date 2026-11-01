@@ -18,6 +18,61 @@ copy config.json "$(TargetDir)" >nul 2>&1
 
 ## 📋 Команды CLI
 
+### **Команда `train` — ЗАПУСК ОБУЧЕНИЯ** (поддерживает все параметры тренера!)
+
+```bash
+# Обучить сеть D на 20000 партий
+dotnet run train D 20000
+
+# Обучить с параметрами через опции --key:value
+dotnet run train D --games:50000 --lr:0.01 --epsilon:0.2 --seed:123
+
+# С именем сохранения
+dotnet run train D 20000 --save:network_A
+
+# Все параметры тренера в формате key:value
+dotnet run train D 20000 \
+  --games:50000 \
+  --lr:0.01 \
+  --epsilon:0.3 \
+  --decay:0.995 \
+  --seed:42 \
+  --save:network_A \
+  --algorithm:standard \
+  --mode:C \
+  --correction:FULL \
+  --chunk:500 \
+  --warmup:500 \
+  --snapshotEvery:100 \
+  --demo:1 \
+  --board:9 \
+  --win:5
+```
+
+**Параметры команды `train`:**
+- `<сеть>` — A/B/C/D/E (обязательно)
+- `<партии>` — количество партий для обучения (по умолчанию 20,000)
+- `[saveName]` — имя сохранения обученной сети (опционально)
+- `[seed]` — seed случайных чисел (по умолчанию 42)
+- `[learningRate]` — learning rate (по умолчанию 0.01)
+
+**Дополнительные параметры через `--key:value`:**
+- `games:N` — количество партий (по умолчанию 20,000)
+- `lr:N` — learning rate (по умолчанию 0.01)
+- `epsilon:N` — epsilon для exploration (по умолчанию 0.3)
+- `decay:N` — decay coefficient (по умолчанию 0.995)
+- `seed:N` — seed случайных чисел (по умолчанию 42)
+- `save:имя` — имя сохранения сети
+- `algorithm:` — алгоритм обучения (standard/league/genetic/bot)
+- `mode:A|B|C|D|E` — режим обучения (LearningMode)
+- `correction:FULL|ONCE|OFF|ALL` — коррекция ошибок
+- `chunk:N` — размер чанка для обучения (по умолчанию 500)
+- `warmup:N` — warmup партий (по умолчанию 500)
+- `snapshotEvery:N` — снимки каждые N партий (по умолчанию 100)
+- `demo:0|1` — показывать демо игры (по умолчанию 1)
+- `board:N` — размер доски (по умолчанию 9x9)
+- `win:N` — длина победы (по умолчанию 5)
+
 ### Анализ CSV-логов
 
 ```bash
@@ -32,17 +87,6 @@ dotnet run <путь_к_логу>
 ```bash
 dotnet run analyze logs\pattern_log_network_a_2_40000.csv
 dotnet run tests\baseline_d_20000_permuted.txt
-```
-
-### Запуск обучения
-
-```bash
-# Обучение сети D на 20000 партий
-dotnet run start D 20000
-
-# Обучение другой сети или с кастомным количеством партий
-dotnet run start A 50000
-dotnet run start E 30000
 ```
 
 ### Управление обучением
@@ -71,23 +115,29 @@ dotnet run --test
 
 ```
 GomokuGame.Trainer.MCP\
-├── Program.cs                    # Входная точка CLI (189 строк)
+├── Program.cs                    # Входная точка CLI (265 строк) ✅
 ├── Configuration.cs              # Загрузка путей из config.json
 ├── Models/
-│   └── TrainingState.cs          # Модели данных (без изменений)
+│   └── TrainingState.cs          # Модели данных
 ├── LogAnalyzers/
-│   ├── CsvLogParser.cs           # ✅ Парсер CSV с валидацией (197 строк)
-│   ├── Exceptions.cs             # ✅ 3 типа исключений
-│   ├── CliAnalyzer.cs            # ✅ Анализ для CLI (94 строк, без тестов)
-│   ├── TestRunner.cs             # ✅ Центральный контроллер тестов
+│   ├── CsvLogParser.cs           # Парсер CSV с валидацией (197 строк)
+│   ├── Exceptions.cs             # 3 типа исключений
+│   ├── CliAnalyzer.cs            # Анализ для CLI (94 строк)
+│   ├── TestRunner.cs             # Центральный контроллер тестов
 │   └── InteractiveMode.cs        # Интерактивный режим
+├── Commands/
+│   ├── ITrainCommand.cs          # Интерфейс команды train ✅
+│   └── TrainCommand.cs           # Реализация команды train (190 строк) ✅
+├── Services/
+│   ├── ITrainerController.cs     # Интерфейс управления обучением
+│   └── TrainerController.cs      # Контроллер обучения (307 строк)
 ├── tests/                        # Тестовые файлы изолированы
 │   ├── baseline_d_20000_permuted.txt
 │   ├── baseline_d_missing_missed.txt
 │   ├── baseline_d_extra_field.txt
 │   └── baseline_d_invalid_value.txt
 ├── logs/                         # Папка для реальных логов (read-only)
-├── config.json                  # ✅ Конфигурация окружения
+├── config.json                  # Конфигурация окружения
 └── GomokuGame.Trainer.MCP.csproj
 ```
 
@@ -140,7 +190,7 @@ WinRate: 60,60% ((X*100)/Done)
 
 ### 📝 CSV логи — read-only:
 
-Проект только **анализирует** CSV-логи обучения, не запускает обучение самостоятельно.
+Проект только **анализирует** CSV-логи обучения, не перезаписывает их.
 
 ---
 
@@ -194,14 +244,29 @@ CSV-логи читаются по **названиям колонок**, а н�
 - `FieldCountMismatchException` — несовпадение количества полей
 - `InvalidFieldException` — неверный формат числового значения
 
+### Command Pattern для запуска обучения
+
+Новая архитектура запуска обучения через интерфейс `ITrainCommand`:
+- Интерфейс `ITrainCommand` определяет контракт команды
+- Реализация `TrainCommand` управляет запуском процесса через ShellExecute
+- Поддерживает все параметры командной строки приложения GomokuGame.Trainer.exe (key:value)
+
+### Full Parameter Support for Trainer CLI
+
+Команда `train` поддерживает полный набор параметров тренера:
+```bash
+dotnet run train D 20000 --games:50000 --lr:0.01 --epsilon:0.3 --seed:42 \
+  --save:network_A --algorithm:standard --mode:C --correction:FULL \
+  --chunk:500 --warmup:500 --snapshotEvery:100 --demo:1 --board:9 --win:5
+```
+
 ---
 
 ## 📦 Зависимости
 
 Проект использует следующие зависимости (указаны в `.csproj`):
-- `System.IO.Abstractions` — для работы с файлами
-- `JsonSubTypes` — для сериализации моделей
-- И другие необходимые пакеты
+- `Serilog.Sinks.Console` — консольный вывод
+- `Serilog.Sinks.File` — вывод в файл
 
 ---
 
@@ -210,7 +275,7 @@ CSV-логи читаются по **названиям колонок**, а н�
 - **Не меняйте** файлы в основном проекте GomokuGame
 - **CSV логи** только читаются (read-only доступ)
 - **Эталонные сети** не должны быть перезаписаны
-- Проект предназначен для **анализа и мониторинга** обучения, не запускает его самостоятельно
+- Проект предназначен для **запуска и анализа** обучения Gomoku
 
 ---
 
@@ -218,8 +283,9 @@ CSV-логи читаются по **названиям колонок**, а н�
 
 | Команда | Описание | Параметры |
 |---------|----------|-----------|
+| `dotnet run train <сеть> <партии> [saveName] [seed] [learningRate]` | Запуск обучения ✅ | A/B/C/D/E, кол-во партий (по умолчанию 20000) |
 | `dotnet run analyze <лог>` | Анализ CSV-лога | путь к лог |
-| `dotnet run start <сеть> [партии]` | Запуск обучения | A/B/C/D/E, кол-во партий (по умолчанию 20000) |
+| `dotnet run start <сеть> [партии]` | Запуск обучения (устарело) | A/B/C/D/E, кол-во партий |
 | `dotnet run stop` | Остановить обучение | - |
 | `dotnet run status` | Проверить статус | - |
 | `dotnet run help` | Показать справку | - |
@@ -227,6 +293,7 @@ CSV-логи читаются по **названиям колонок**, а н�
 
 ---
 
-**Версия:** 1.0.0  
-**Дата создания:** 2026-10-31  
-**Статус:** ✅ Работающий MCP-сервер для анализа логов Gomoku
+**Версия:** 1.2.0  
+**Дата создания:** 2026-11-01  
+**Статус:** ✅ Работающий MCP-сервер для анализа и запуска обучения Gomoku с полной поддержкой параметров тренера
+<EOF>
