@@ -12,16 +12,6 @@ namespace GomokuGame.Trainer.MCP.Commands
         /// Запустить обучение указанной сети через args (краткий режим).
         /// </summary>
         /// <param name="network">Имя обучаемой сети (произвольное, например: "network_A", "topology_test")</param>
-        /// <param name="args">Аргументы командной строки тренера в формате ключ:значение (опционально)</param>
-        /// <returns>Асинхронная задача запуска обучения</returns>
-        Task TrainAsync(
-            string network,           // ИМЯ СЕТИ! (произвольное)
-            Dictionary<string, string>? args = null);
-
-        /// <summary>
-        /// Запустить обучение указанной сети с указанными параметрами.
-        /// </summary>
-        /// <param name="network">Имя обучаемой сети (произвольное)</param>
         /// <param name="games">Количество партий для обучения</param>
         /// <param name="saveName">Имя сохранения для результата (опционально)</param>
         /// <param name="seed">Seed случайных чисел</param>
@@ -38,11 +28,11 @@ namespace GomokuGame.Trainer.MCP.Commands
         /// Запустить обучение указанной сети с расширенными параметрами тренера.
         /// </summary>
         /// <param name="network">Имя обучаемой сети (произвольное)</param>
-        /// <param name="additionalArgs">Дополнительные параметры тренера в формате key:value (опционально)</param>
+        /// <param name="args">Аргументы командной строки тренера в формате key:value (опционально)</param>
         /// <returns>Асинхронная задача запуска обучения</returns>
         Task TrainAdvancedAsync(
             string network,           // ИМЯ СЕТИ!
-            Dictionary<string, string>? additionalArgs = null);
+            Dictionary<string, string>? args = null);
 
         /// <summary>
         /// Получить название команды.

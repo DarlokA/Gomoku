@@ -8,145 +8,78 @@ using GomokuGame.Trainer.MCP.Models;
 
 namespace GomokuGame.Trainer.MCP.Commands
 {
-    /// <summary>
-    /// Команда запуска обучения Gomoku сети через ShellExecute.
-    /// Поддерживает все параметры командной строки приложения GomokuGame.Trainer.exe
-    /// </summary>
     public sealed class TrainCommand : ITrainCommand
     {
         private static readonly CultureInfo _ci = CultureInfo.InvariantCulture;
-
-        /// <summary>
-        /// Режим обучения сети (LearningMode):
-        /// A - reward = длина линии после хода, без исхода партии.
-        /// B - reward = дисконт от победы. Ходы победителя — 0.5 + 0.5·γ^dist, остальные — 0.5.
-        /// C - reward = дисконт + shaping за длину линии.
-        /// D - discount + shaping за потенциальную длину линии.
-        /// E - LocalTactical (LTT), локальная тактическая оценка хода.
-        /// </summary>
-        public string LearningMode { get; set; } = "C"; // DiscountedWithShaping (по умолчанию)
-
-        /// <summary>
-        /// Коррекция ошибок: FULL/ONCE/OFF/ALL
-        /// </summary>
+        public string LearningMode { get; set; } = "C";
         public string CorrectionMode { get; set; } = "FULL";
-
-        /// <inheritdoc/>
         public string CommandName => "train";
 
-        /// <inheritdoc/>
-        public Task TrainAsync(
-            string network,           // ИМЯ СЕТИ! (произвольное, например: "network_A", "topology_test")
-            Dictionary<string, string>? args = null)
-        {
-            return TrainAdvancedAsync(network, args);
-        }
-
-        /// <inheritdoc/>
-        public async Task TrainAsync(
-            string network,           // ИМЯ СЕТИ! (произвольное!)
-            int games,
-            string? saveName = null,  // Имя сохранения обученной сети!
-            int seed = 42,
-            double learningRate = 0.01)
+        public async Task TrainAsync(string network, int games = 20000, Dictionary<string, string>? args = null)
         {
             Console.WriteLine($"=== Запуск команды '{CommandName}' ===");
-            Console.WriteLine($"ИМЯ СЕТИ:     {network} (например: network_A, topology_test)");
-            Console.WriteLine($"Партии:       {games:N0} {(games == 0 ? "(бесконечно)" : "")}");
-            Console.WriteLine($"Seed:         {seed}");
-            Console.WriteLine($"LearningRate: {learningRate:F4}");
-            Console.WriteLine($"LearningMode: {LearningMode} (A/B/C/D/E)");
-            Console.WriteLine($"Correction:   {CorrectionMode}");
-            if (!string.IsNullOrWhiteSpace(saveName))
-                Console.WriteLine($"SaveName:     {saveName}");
+            Console.WriteLine($"ИМЯ СЕТИ:     {network}");
 
+            if (args == null || args.Count == 0)
+            {
+                args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    {"games", games.ToString(_ci)},
+                    {"lr", "0.01"},
+                    {"epsilon", "0.3"},
+                    {"decay", "0.995"},
+                    {"seed", "42"},
+                    {"save", network},
+                    {"mode", LearningMode},
+                    {"correction", CorrectionMode},
+                    {"algorithm", "standard"},
+                    {"chunk", "500"},
+                    {"warmup", "500"},
+                    {"snapshotEvery", "100"},
+                    {"demo", "1"},
+                    {"board", "9"},
+                    {"win", "5"}
+                };
+            }
+
+            Console.WriteLine($"\nЗапуск GomokuGame.Trainer.exe с аргументами: {string.Join(" ", ParseArgs(network, args))}\n");
+            await RunTrainerAsync(ParseArgs(network, args).ToArray());
+        }
+
+        public async Task TrainAsync(string network, int games, string? saveName = null, int seed = 42, double learningRate = 0.01)
+        {
             var argsDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            // Основные параметры из метода с сигнатурой (games, lr, seed)
             argsDict["games"] = games.ToString(_ci);
             argsDict["lr"] = learningRate.ToString(_ci);
-            argsDict["epsilon"] = "0.3";   // epsilon для exploration (по умолчанию)
-            argsDict["decay"] = "0.995";   // decay coefficient (по умолчанию)
+            argsDict["epsilon"] = "0.3";
+            argsDict["decay"] = "0.995";
             argsDict["seed"] = seed.ToString(_ci);
 
             if (!string.IsNullOrWhiteSpace(saveName))
                 argsDict["save"] = saveName;
 
-            // Режим обучения и коррекция (из полей класса, но можно переопределить через args)
-            argsDict["mode"] = LearningMode;       // A/B/C/D/E
-            argsDict["correction"] = CorrectionMode; // FULL/ONCE/OFF/ALL
-
-            // Дополнительные параметры тренера с разумными значениями по умолчанию
+            argsDict["mode"] = LearningMode;
+            argsDict["correction"] = CorrectionMode;
             argsDict["algorithm"] = "standard";
-            argsDict["chunk"] = "500";     // размер чанка для обучения
-            argsDict["warmup"] = "500";    // warmup партий
-            argsDict["snapshotEvery"] = "100"; // снимки каждые N партий
-            argsDict["demo"] = "1";         // показывать демонические игры (true=1)
-            argsDict["board"] = "9";        // размер доски 9x9 (по умолчанию)
-            argsDict["win"] = "5";          // длина победы 5 (по умолчанию)
+            argsDict["chunk"] = "500";
+            argsDict["warmup"] = "500";
+            argsDict["snapshotEvery"] = "100";
+            argsDict["demo"] = "1";
+            argsDict["board"] = "9";
+            argsDict["win"] = "5";
 
-            Console.WriteLine($"\nЗапуск GomokuGame.Trainer.exe с аргументами: {string.Join(" ", ParseArgs(network, argsDict))}\n");
-
-            await RunTrainerAsync(ParseArgs(network, argsDict).ToArray());
-        }
-
-        /// <summary>
-        /// Расширенная версия TrainAsync со всеми параметрами тренера.
-        /// </summary>
-        public async Task TrainAdvancedAsync(
-            string network,           // ИМЯ СЕТИ! (произвольное!)
-            Dictionary<string, string>? additionalArgs = null)
-        {
-            Console.WriteLine($"=== Запуск команды '{CommandName}' (advanced) ===");
+            Console.WriteLine($"=== Запуск команды '{CommandName}' ===");
             Console.WriteLine($"ИМЯ СЕТИ:     {network}");
+            Console.WriteLine($"Партии:       {games:N0} {(games == 0 ? "(бесконечно)" : "")}");
+            Console.WriteLine($"SaveName:     {saveName ?? "default"}");
 
-            // Создаем словарь аргументов с дефолтными значениями
-            var argsDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            // Параметры из additionalArgs или дефолтные значения
-            if (additionalArgs?.ContainsKey("games") == true)
-                argsDict["games"] = GetArgInt(additionalArgs, "games", 20000).ToString(_ci);
-            else
-                argsDict["games"] = "20000";
-
-            argsDict["lr"] = GetArgDouble(additionalArgs, "lr", 0.01).ToString(_ci);
-            argsDict["epsilon"] = GetArgDouble(additionalArgs, "epsilon", 0.3).ToString(_ci);
-            argsDict["decay"] = GetArgDouble(additionalArgs, "decay", 0.995).ToString(_ci);
-            argsDict["seed"] = GetArgInt(additionalArgs, "seed", 42).ToString(_ci);
-
-            if (additionalArgs?.ContainsKey("save") == true)
-                argsDict["save"] = additionalArgs["save"];
-
-            // Режим обучения и коррекция (из полей класса, но можно переопределить через args)
-            if (additionalArgs?.ContainsKey("mode") == true)
-                argsDict["mode"] = additionalArgs["mode"].ToUpperInvariant();
-            else
-                argsDict["mode"] = LearningMode;
-
-            if (additionalArgs?.ContainsKey("correction") == true)
-                argsDict["correction"] = additionalArgs["correction"].ToUpperInvariant();
-            else
-                argsDict["correction"] = CorrectionMode;
-
-            // Дополнительные параметры тренера с разумными значениями по умолчанию
-            argsDict["algorithm"] = GetArg(additionalArgs, "algorithm", "standard");
-            argsDict["chunk"] = GetArgInt(additionalArgs, "chunk", 500).ToString(_ci);
-            argsDict["warmup"] = GetArgInt(additionalArgs, "warmup", 500).ToString(_ci);
-            argsDict["snapshotEvery"] = GetArgInt(additionalArgs, "snapshotEvery", 100).ToString(_ci);
-            argsDict["demo"] = GetArg(additionalArgs, "demo", "1");
-            argsDict["board"] = GetArgInt(additionalArgs, "board", 9).ToString(_ci);
-            argsDict["win"] = GetArgInt(additionalArgs, "win", 5).ToString(_ci);
-
-            Console.WriteLine($"\nЗапуск GomokuGame.Trainer.exe с аргументами: {string.Join(" ", ParseArgs(network, argsDict))}\n");
-
-            await RunTrainerAsync(ParseArgs(network, argsDict).ToArray());
+            await TrainAsync(network, games, argsDict);
         }
 
-        /// <summary>
-        /// Парсит Dictionary<string, string> в список аргументов командной строки.
-        /// Формат: train ИМЯ_СЕТИ games:N lr:N epsilon:N ...
-        /// </summary>
-        private static List<string> ParseArgs(string network, Dictionary<string, string> argsDict)
+        public async Task TrainAdvancedAsync(string network, Dictionary<string, string>? additionalArgs = null) =>
+            await TrainAsync(network, 0, additionalArgs);
+
+        private static string[] ParseArgs(string network, Dictionary<string, string> argsDict)
         {
             var result = new List<string>();
             foreach (var kvp in argsDict)
@@ -154,69 +87,88 @@ namespace GomokuGame.Trainer.MCP.Commands
                 result.Add(kvp.Key);
                 result.Add(kvp.Value);
             }
-            // Добавляем ИМЯ СЕТИ в начало (после команды train, которая подразумевается)
             result.Insert(1, network);
-            return result;
+            return result.ToArray();
         }
 
-        private static string GetArg(Dictionary<string, string>? args, string key, string def = "")
-            => args?.ContainsKey(key) == true && !string.IsNullOrEmpty(args[key]) ? args[key] : def;
-
-        private static double GetArgDouble(Dictionary<string, string>? args, string key, double def)
-            => args?.ContainsKey(key) == true && double.TryParse(
-                args[key], _ci, out var v) ? v : def;
-
-        private static int GetArgInt(Dictionary<string, string>? args, string key, int def)
-            => args?.ContainsKey(key) == true && int.TryParse(
-                args[key], _ci, out var v) ? v : def;
-
-        /// <summary>
-        /// Запустить процесс тренера и ожидать завершения.
-        /// </summary>
-        private async Task RunTrainerAsync(string[] args)
+        private async Task RunTrainerAsync(string[] trainerArgs)
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             var trainerPath = Path.Combine(baseDir, "GomokuGame.Trainer.exe");
 
             if (!File.Exists(trainerPath))
-            {
-                throw new FileNotFoundException(
-                    $"Не найден файл GomokuGame.Trainer.exe в пути: {trainerPath}");
-            }
+                throw new FileNotFoundException($"Не найден файл GomokuGame.Trainer.exe в пути: {trainerPath}");
 
             Console.WriteLine($"[INFO] Путь к тренеру: {trainerPath}");
+            Console.WriteLine($"Аргументы: {string.Join(" ", trainerArgs)}\n");
 
-            var psi = new ProcessStartInfo(trainerPath, string.Join(" ", args))
+            var psi = new ProcessStartInfo(trainerPath, string.Join(" ", trainerArgs))
             {
                 UseShellExecute = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = false,
+                WorkingDirectory = baseDir,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
 
-            Console.WriteLine("[INFO] Запуск процесса через ShellExecute...");
+            Console.WriteLine("[INFO] Запуск GomokuGame.Trainer.exe через ShellExecute...");
 
             using var process = new Process { StartInfo = psi };
 
             process.OutputDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
-                {
-                    Console.WriteLine($"[TRAINER] {e.Data}");
-                }
+                    Console.WriteLine($"[TRAINER OUTPUT] {e.Data}");
             };
 
             process.ErrorDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
-                {
-                    Console.WriteLine($"[ERROR TRAINER] {e.Data}");
-                }
+                    Console.WriteLine($"[TRAINER ERROR] {e.Data}");
             };
 
-            process.Start();
+            bool started = false;
+            try
+            {
+                if (!process.Start())
+                {
+                    throw new InvalidOperationException("Не удалось запустить процесс GomokuGame.Trainer.exe");
+                }
+                started = true;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException || !started)
+            {
+                Console.WriteLine($"[WARN] Не удалось запустить процесс: {ex.Message}");
+                Console.WriteLine("[INFO] Используя прямой вызов без перенаправления вывода...");
+
+                try
+                {
+                    var simpleArgs = trainerArgs;
+                    var simplePsi = new ProcessStartInfo(trainerPath, string.Join(" ", simpleArgs))
+                    {
+                        UseShellExecute = false,
+                        WorkingDirectory = baseDir,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        StandardOutputEncoding = Encoding.UTF8,
+                        StandardErrorEncoding = Encoding.UTF8,
+                    };
+
+                    using var simpleProcess = new Process { StartInfo = simplePsi };
+                    simpleProcess.Start();
+                    simpleProcess.WaitForExit();
+                    Console.WriteLine($"[INFO] Процесс завершён с кодом: {simpleProcess.ExitCode}");
+                }
+                catch (Exception ex2)
+                {
+                    Console.WriteLine($"[ERROR] Прямой вызов не удался: {ex2.Message}");
+                }
+                return;
+            }
+
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -224,24 +176,25 @@ namespace GomokuGame.Trainer.MCP.Commands
             {
                 try
                 {
-                    while (true)
+                    while (process.HasExited == false)
                     {
                         await Task.Delay(100);
                     }
                 }
                 catch (OperationCanceledException)
                 {
-                    Console.WriteLine("[INFO] Запуск обучения отменён.");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[ERROR] Процесс завершён с ошибкой: {ex.Message}");
+                    if (!process.HasExited)
+                    {
+                        process.Kill();
+                        Console.WriteLine("[INFO] Процесс отменён.");
+                    }
                 }
             });
 
             await process.WaitForExitAsync();
 
-            Console.WriteLine("\n=== Команда 'train' завершена ===\n");
+            int exitCode = process.ExitCode;
+            Console.WriteLine($"\n=== Команда 'train' завершена (код: {exitCode}) ===\n");
         }
     }
 }

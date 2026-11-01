@@ -30,58 +30,62 @@ namespace GomokuGame.Trainer.MCP
                 switch (command)
                 {
                     case "train":
-                        // train <сеть> [партии] — запуск обучения
-                        if (args.Length == 1 || string.IsNullOrEmpty(args[1]))
+                        // train <сеть> [партии] --key:value ... — запуск обучения
+                        if (args.Length < 2 || string.IsNullOrEmpty(args[1]))
                         {
-                            Console.WriteLine("Ошибка: Укажите сеть и количество партий для обучения");
-                            Console.WriteLine("Пример: dotnet run train network_A 20000");
+                            Console.WriteLine("Ошибка: Укажите сеть для обучения");
+                            Console.WriteLine("Пример: dotnet run train network_A games:10000 lr:0.01");
                         }
                         else
                         {
                             try
                             {
-                                // Простая форма: train <сеть> [партии] [saveName] [seed] [learningRate]
                                 var network = args[1];
                                 
-                                int games = 20000; // Дефолтное значение
-                                string? saveName = null;
-                                int seed = 42;
-                                double learningRate = 0.01;
+                                // Собираем аргументы в формате Dictionary<string, string>
+                                var trainerArgs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                                 if (args.Length >= 3 && !string.IsNullOrEmpty(args[2]))
                                 {
-                                    // args[2] может быть числом (games) или строкой (saveName)
-                                    var gValue = int.TryParse(args[2], CultureInfo.InvariantCulture, out var g) 
-                                        ? Math.Max(1, g) 
-                                        : default(int?);
-                                    
-                                    if (gValue.HasValue && gValue.Value > 0)
-                                    {
-                                        games = gValue.Value;
-                                        if (args.Length >= 4 && !string.IsNullOrEmpty(args[3]))
-                                        {
-                                            // Если есть третий аргумент — это saveName или seed/lr
-                                            var s2Value = int.TryParse(args[3], CultureInfo.InvariantCulture, out var s) && s > 0 
-                                                ? s 
-                                                : default(int);
-                                            if (s2Value > 0)
-                                                seed = s2Value;
-                                            else
-                                                saveName = args[3];
-                                        }
-                                    }
+                                    // Если третий аргумент — это число (партии), считаем его
+                                    if (int.TryParse(args[2], CultureInfo.InvariantCulture, out var g) && g > 0)
+                                        trainerArgs["games"] = args[2];
                                     else
+                                        trainerArgs["save"] = args[2];
+                                }
+
+                                // Парсим оставшиеся аргументы в формате "ключ:значение"
+                                for (int i = 3; i < args.Length; i++)
+                                {
+                                    var arg = args[i];
+                                    int colonIndex = arg.IndexOf(':');
+                                    
+                                    if (colonIndex > 0)
                                     {
-                                        // Это saveName
-                                        saveName = args[2];
-                                        if (args.Length >= 4 && !string.IsNullOrEmpty(args[3]))
+                                        string key = arg.Substring(0, colonIndex);
+                                        string value = arg.Substring(colonIndex + 1);
+
+                                        // Если значение выглядит как число — пробуем парсить
+                                        if (int.TryParse(value, CultureInfo.InvariantCulture, out int intValue))
                                         {
-                                            // Если есть четвёртый аргумент — это seed или lr
-                                            var s3Value = int.TryParse(args[3], CultureInfo.InvariantCulture, out var seedValue) && seedValue > 0 
-                                                ? seedValue 
-                                                : default(int);
-                                            if (s3Value > 0)
-                                                seed = s3Value;
+                                            if (key == "games")
+                                                trainerArgs[key] = args[i];
+                                            else if (key == "seed")
+                                                trainerArgs[key] = value;
+                                            else
+                                                trainerArgs[key] = value.ToString();
+                                        }
+                                        else if (double.TryParse(value, CultureInfo.InvariantCulture, out double doubleValue))
+                                        {
+                                            if (key == "lr" || key == "epsilon" || key == "decay")
+                                                trainerArgs[key] = value;
+                                            else
+                                                trainerArgs[key] = value.ToString();
+                                        }
+                                        else
+                                        {
+                                            // Строковое значение
+                                            trainerArgs[key] = value;
                                         }
                                     }
                                 }
@@ -89,10 +93,8 @@ namespace GomokuGame.Trainer.MCP
                                 var trainCommand = new TrainCommand();
                                 await trainCommand.TrainAsync(
                                     network: network,
-                                    games: games,
-                                    saveName: saveName,
-                                    seed: seed,
-                                    learningRate: learningRate);
+                                    games: trainerArgs.ContainsKey("games") ? int.Parse(trainerArgs["games"], CultureInfo.InvariantCulture) : 20000,
+                                    args: trainerArgs);
                             }
                             catch (Exception ex)
                             {
@@ -212,49 +214,15 @@ namespace GomokuGame.Trainer.MCP
               Тестирование:
                 --test                      Запустить тесты CsvLogParser
 
-              Параметры команды train:
-                train <сеть> [партии]           — Обучение с указанным числом партий
-                train <сеть> --games:N          — Количество партий (N)
-                train <сеть> --lr:N             — Learning rate
-                train <сеть> --epsilon:N        — Epsilon для exploration
-                train <сеть> --decay:N          — Decay coefficient
-                train <сеть> --seed:N           — Seed случайных чисел
-                train <сеть> --save:имя         — Имя сохранения сети
-                train <сеть> --mode:A|B|C|D|E   — Режим обучения (LearningMode)
-                train <сеть> --correction:X     — Коррекция ошибок (FULL/ONCE/OFF/ALL)
-                train <сеть> --algorithm:alg    — Алгоритм обучения (standard/league/genetic/bot)
-                train <сеть> --chunk:N          — Размер чанка для обучения
-                train <сеть> --warmup:N         — Warmup партий
-                train <сеть> --snapshotEvery:N  — Снимки каждые N партий
-                train <сеть> --demo:0|1         — Показывать демо игры (по умолчанию 1)
-                train <сеть> --board:N          — Размер доски (по умолчанию 9)
-                train <сеть> --win:N            — Длина победы (по умолчанию 5)
-
               Примеры:
                 # Обучить сеть network_A на 20000 партий в режиме C (по умолчанию)
                 dotnet run train network_A 20000
                 
-                # Обучить сеть topology_test на 50000 партий с именем сохранения
-                dotnet run train topology_test \
-                  --games:50000 \
-                  --lr:0.01 \
-                  --epsilon:0.3 \
-                  --decay:0.995 \
-                  --seed:42 \
-                  --save:topology_50k \
-                  --mode:C \
-                  --correction:FULL
+                # Обучить сеть test_a на 10000 партий с параметрами
+                dotnet run train test_a 10000 --games:10000 --lr:0.01 --epsilon:0.3 --decay:0.995 --seed:42 --save:test_a --mode:A --correction:FULL
                 
-                # Обучение в режиме B с бесконечным обучением
-                dotnet run train network_B \
-                  --mode:B \
-                  --games:0 \
-                  --lr:0.01
-                
-                # Обучение в режиме E (LTT) с коррекцией OFF
-                dotnet run train network_A \
-                  --mode:E \
-                  --correction:OFF
+                # Обучение в режиме E (LTT)
+                dotnet run train network_A 0 --mode:E --games:0 --correction:OFF
                 
                 # Анализировать CSV-лог
                 dotnet run analyze tests\baseline_d_20000_permuted.txt
