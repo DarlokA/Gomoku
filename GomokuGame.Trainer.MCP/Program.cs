@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using GomokuGame.Trainer.MCP.Models;
 using GomokuGame.Trainer.MCP.Services;
@@ -12,85 +12,75 @@ namespace GomokuGame.Trainer.MCP
         {
             Console.WriteLine("=== Gomoku Trainer MCP ===");
             
-            if (args.Length == 0)
+            // 1. Тестирование (высокий приоритет)
+            if (args.Contains("--test"))
+            {
+                TestRunner.RunAllTests();
+                return;
+            }
+            
+            // 2. Анализ CSV-лога: <лог> напрямую (завершается после анализа)
+            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false)
+            {
+                var cliAnalyzer = new CliAnalyzer();
+                cliAnalyzer.Analyze(args[0]);
+                return;
+            }
+            
+            // 3. Явная команда анализа: analyze <лог> (завершается после анализа)
+            if (args.Length >= 2 && args[0].ToLowerInvariant() == "analyze" && !string.IsNullOrEmpty(args[1]) && args[0].StartsWith("--", StringComparison.Ordinal) == false)
+            {
+                var cliAnalyzer = new CliAnalyzer();
+                cliAnalyzer.Analyze(args[1]);
+                return;
+            }
+            
+            // 4. Команды: start, stop, status, help — завершают после выполнения
+            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false && args[0].ToLowerInvariant() != "analyze")
+            {
+                var command = args[0].ToLowerInvariant();
+                
+                switch (command)
+                {
+                    case "start":
+                        if (args.Length < 2)
+                        {
+                            Console.WriteLine("Ошибка: Укажите сеть (A/B/C/D/E)");
+                        }
+                        else
+                        {
+                            await StartTraining(args[1]);
+                        }
+                        break;
+
+                    case "stop":
+                        await StopTraining();
+                        Console.WriteLine("[INFO] Процесс остановлен.");
+                        break;
+
+                    case "status":
+                        PrintEnvironmentInfo();
+                        Console.WriteLine($"Текущий статус: {(GetTrainer().IsRunning ? "ЗАПУЩЕН" : "ОСТАНОВЛЕН")}");
+                        break;
+
+                    case "help":
+                    case "-h":
+                        PrintHelp();
+                        break;
+
+                    default:
+                        Console.WriteLine("Неизвестная команда. Введите 'start', 'stop', 'status' или 'help'.");
+                        break;
+                }
+                
+                // После обработки команды завершаем
+                return;
+            }
+            
+            // 5. Интерактивный режим (пустой запуск — запускается явно пользователем)
+            if (args.Length == 0 && args.All(a => string.IsNullOrWhiteSpace(a)))
             {
                 await InteractiveMode();
-            }
-            else
-            {
-                // Если один аргумент - это путь к CSV-логу, анализируем его
-                if (args.Length == 1 && !string.IsNullOrEmpty(args[0]))
-                {
-                    var cliAnalyzer = new CliAnalyzer();
-                    cliAnalyzer.Analyze(args[0]);
-                }
-                else
-                {
-                    // Командная строка с явными командами
-                    var command = args[0].ToLowerInvariant();
-
-                    switch (command)
-                    {
-                        case "start":
-                            if (args.Length < 2)
-                            {
-                                Console.WriteLine("Ошибка: Укажите сеть (A/B/C/D/E)");
-                            }
-                            else
-                            {
-                                string network = args[1];
-                                int gamesCount = 20000;
-
-                                if (args.Length >= 3)
-                                {
-                                    var thirdArg = args[2];
-
-                                    if (int.TryParse(thirdArg, out int parseGames))
-                                    {
-                                        gamesCount = parseGames;
-                                    }
-                                    else if (thirdArg.Contains("games="))
-                                    {
-                                        var parts = thirdArg.Split('=');
-                                        if (parts.Length == 2 && int.TryParse(parts[1], out int games))
-                                        {
-                                            gamesCount = games;
-                                        }
-                                    }
-                                }
-
-                                var trainerPath = ConfigurationLoader.GetTrainerPath();
-                                Console.WriteLine($"[INFO] Путь к тренеру: {trainerPath}");
-
-                                if (!File.Exists(trainerPath))
-                                {
-                                    Console.WriteLine($"[ERROR] Файл тренера не найден: {trainerPath}");
-                                    return;
-                                }
-
-                                var trainer = new TrainerController();
-                                await trainer.StartTrainingAsync(network, gamesCount, saveName: null, seed: 42);
-                            }
-                            break;
-
-                        case "stop":
-                            {
-                                var trainer = new TrainerController();
-                                await trainer.StopTrainingAsync();
-                            }
-                            break;
-
-                        case "status":
-                        default:
-                            {
-                                var trainer = new TrainerController();
-                                PrintEnvironmentInfo();
-                                Console.WriteLine($"Текущий статус: {(trainer.IsRunning ? "ЗАПУЩЕН" : "ОСТАНОВЛЕН")}");
-                                Console.Write("\nКоманда (start/stop/status/help): ");
-                            }
-                            break;
-                    }
-                }
             }
         }
 
@@ -100,15 +90,21 @@ namespace GomokuGame.Trainer.MCP
               Gomoku Trainer MCP - CLI для управления обучением и анализа логов
 
               Команды:
-                <лог>                     Автоматически анализировать CSV-лог
-                start <сеть> [партии]    Запустить обучение (A/B/C/D/E)
-                stop                      Остановить процесс обучения
-                status                    Показать текущий статус
-                help                      Показать эту справку
+                <лог>                     Автоматически анализировать CSV-лог (завершается после анализа)
+                analyze <лог>             Анализировать CSV-лог с явной командой
+                start <сеть> [партии]     Запустить обучение (A/B/C/D/E, по умолчанию 20000 партий)
+                stop                       Остановить процесс обучения
+                status                     Показать текущий статус и информацию об окружении
+                help / -h                  Показать эту справку
+
+              Тестирование:
+                --test                     Запустить тесты CsvLogParser
 
               Примеры:
                 dotnet run start D 20000
                 dotnet run analyze logs/baseline_d_20000.txt
+                dotnet run tests\baseline_d_permuted.txt
+                dotnet run --test
             ";
             Console.WriteLine(helpText.Trim());
         }
@@ -156,7 +152,6 @@ namespace GomokuGame.Trainer.MCP
                             break;
 
                         case "help":
-                        case "analyze":
                         case "-h":
                             PrintHelp();
                             break;
@@ -179,6 +174,17 @@ namespace GomokuGame.Trainer.MCP
             var trainer = new TrainerController();
             await trainer.StartTrainingAsync(network, 20000);
             Console.WriteLine("\nОбучение запущено! Статус проверяйте командой 'status'.");
+        }
+
+        static async Task StopTraining()
+        {
+            var trainer = new TrainerController();
+            await trainer.StopTrainingAsync();
+        }
+
+        static TrainerController GetTrainer()
+        {
+            return new TrainerController();
         }
     }
 }

@@ -7,30 +7,12 @@ namespace GomokuGame.Trainer.MCP.LogAnalyzers
 {
     /// <summary>
     /// Утилита для анализа CSV-логов без интерактивности.
+    /// Тестовые сценарии перемещены в TestRunner.cs
     /// </summary>
     public sealed class CliAnalyzer
     {
         private readonly CultureInfo _ci = CultureInfo.InvariantCulture;
         private readonly CsvLogParser _parser = new();
-
-        /// <summary>
-        /// Результаты проверок первой записи.
-        /// </summary>
-        public record ValidationResult(
-            bool Success,
-            string? ErrorMessage = null,
-            long Done = -1, int X = -1, int O = -1, 
-            int Draw = -1, double Loss = -1, int Missed = -1,
-            double WinRate = -1)
-        {
-            public override string ToString()
-            {
-                if (!Success && ErrorMessage != null)
-                    return $"❌ ОШИБКА: {ErrorMessage}";
-
-                return $"✅ УСПЕХ: Done={Done:N0}, X={X:N0}, O={O:N0}, Draw={Draw:N0}, Loss={Loss:F4}, Missed={Missed:N0}, WinRate={WinRate:F2}%";
-            }
-        }
 
         /// <summary>
         /// Анализирует лог и выводит результаты в формате, удобном для консольного вывода.
@@ -51,16 +33,6 @@ namespace GomokuGame.Trainer.MCP.LogAnalyzers
             var firstRecord = records[0];
             PrintFirstRecord(firstRecord);
 
-            // Валидация и проверка перестановки колонок
-            Console.WriteLine("\n=== Валидация ===");
-            var validationResult = ValidateFirstRecord(firstRecord, records.Count);
-            
-            if (!validationResult.Success)
-            {
-                Console.WriteLine(validationResult.ErrorMessage);
-                return;
-            }
-
             // Показываем сводку по всему логу
             PrintSummary(records);
         }
@@ -78,109 +50,6 @@ namespace GomokuGame.Trainer.MCP.LogAnalyzers
             Console.WriteLine($"Loss:   {record.Loss:F4}");
             Console.WriteLine($"Missed: {record.Missed:N0} пропущенных побед");
             Console.WriteLine($"WinRate: {record.WinRate:F2}% ((X*100)/Done)");
-        }
-
-        /// <summary>
-        /// Проверяет и выводит результаты валидации первой записи.
-        /// </summary>
-        private ValidationResult ValidateFirstRecord(TrainingRecord firstRecord, int totalChunks)
-        {
-            // Проверка значений
-            var expectedDone = 500L;
-            var expectedX = 303;
-            var expectedO = 197;
-            var expectedDraw = 0;
-            var expectedLoss = 0.0792;
-            var expectedMissed = 1378;
-
-            // Проверка Done
-            if (firstRecord.Done != expectedDone)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"Done: {firstRecord.Done:N0} != {expectedDone:N0}",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка X
-            if (firstRecord.X != expectedX)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"X: {firstRecord.X:N0} != {expectedX:N0}",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка O
-            if (firstRecord.O != expectedO)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"O: {firstRecord.O:N0} != {expectedO:N0}",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка Draw
-            if (firstRecord.Draw != expectedDraw)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"Draw: {firstRecord.Draw:N0} != {expectedDraw:N0}",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка Loss
-            if (Math.Abs(firstRecord.Loss - expectedLoss) > 0.0001) // допускаем небольшую погрешность при округлении
-            {
-                return new ValidationResult(
-                    false, 
-                    $"Loss: {firstRecord.Loss:F4} != {expectedLoss:F4}",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка Missed
-            if (firstRecord.Missed != expectedMissed)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"Missed: {firstRecord.Missed:N0} != {expectedMissed:N0}",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка WinRate
-            var expectedWinRate = (double)expectedX / expectedDone * 100;
-            if (Math.Abs(firstRecord.WinRate - expectedWinRate) > 0.01)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"WinRate: {firstRecord.WinRate:F2}% != {expectedWinRate:F2}%",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Проверка суммы X+O+Draw = Done
-            if (firstRecord.X + firstRecord.O + firstRecord.Draw != firstRecord.Done)
-            {
-                return new ValidationResult(
-                    false, 
-                    $"Сумма: X({firstRecord.X})+O({firstRecord.O})+Draw({firstRecord.Draw})={firstRecord.X+firstRecord.O+firstRecord.Draw} != Done({firstRecord.Done})",
-                    firstRecord.Done, firstRecord.X, firstRecord.O, firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
-            }
-
-            // Вывод всех проверок
-            Console.WriteLine($"Done:   {firstRecord.Done:N0} == {expectedDone:N0} -> ✅");
-            Console.WriteLine($"X:      {firstRecord.X:N0} == {expectedX:N0} -> ✅");
-            Console.WriteLine($"O:      {firstRecord.O:N0} == {expectedO:N0} -> ✅");
-            Console.WriteLine($"Draw:   {firstRecord.Draw:N0} == {expectedDraw:N0} -> ✅");
-            Console.WriteLine($"Loss:   {firstRecord.Loss:F4} == {expectedLoss:F4} -> ✅");
-            Console.WriteLine($"Missed: {firstRecord.Missed:N0} == {expectedMissed:N0} -> ✅");
-            Console.WriteLine($"WinRate: {firstRecord.WinRate:F2}% (ожидаемо: {expectedWinRate:F2}%) -> ✅");
-            Console.WriteLine($"Сумма: X+O+Draw = {firstRecord.X}+{firstRecord.O}+{firstRecord.Draw} = {firstRecord.X+firstRecord.O+firstRecord.Draw} == Done({firstRecord.Done}) -> ✅");
-
-            return new ValidationResult(
-                true,
-                null,
-                firstRecord.Done, firstRecord.X, firstRecord.O, 
-                firstRecord.Draw, firstRecord.Loss, firstRecord.Missed, firstRecord.WinRate);
         }
 
         /// <summary>
