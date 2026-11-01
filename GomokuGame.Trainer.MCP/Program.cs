@@ -34,19 +34,65 @@ namespace GomokuGame.Trainer.MCP
                         if (args.Length == 1 || string.IsNullOrEmpty(args[1]))
                         {
                             Console.WriteLine("Ошибка: Укажите сеть и количество партий для обучения");
-                            Console.WriteLine("Пример: dotnet run train D 20000");
+                            Console.WriteLine("Пример: dotnet run train network_A 20000");
                         }
                         else
                         {
                             try
                             {
+                                // Простая форма: train <сеть> [партии] [saveName] [seed] [learningRate]
+                                var network = args[1];
+                                
+                                int games = 20000; // Дефолтное значение
+                                string? saveName = null;
+                                int seed = 42;
+                                double learningRate = 0.01;
+
+                                if (args.Length >= 3 && !string.IsNullOrEmpty(args[2]))
+                                {
+                                    // args[2] может быть числом (games) или строкой (saveName)
+                                    var gValue = int.TryParse(args[2], CultureInfo.InvariantCulture, out var g) 
+                                        ? Math.Max(1, g) 
+                                        : default(int?);
+                                    
+                                    if (gValue.HasValue && gValue.Value > 0)
+                                    {
+                                        games = gValue.Value;
+                                        if (args.Length >= 4 && !string.IsNullOrEmpty(args[3]))
+                                        {
+                                            // Если есть третий аргумент — это saveName или seed/lr
+                                            var s2Value = int.TryParse(args[3], CultureInfo.InvariantCulture, out var s) && s > 0 
+                                                ? s 
+                                                : default(int);
+                                            if (s2Value > 0)
+                                                seed = s2Value;
+                                            else
+                                                saveName = args[3];
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Это saveName
+                                        saveName = args[2];
+                                        if (args.Length >= 4 && !string.IsNullOrEmpty(args[3]))
+                                        {
+                                            // Если есть четвёртый аргумент — это seed или lr
+                                            var s3Value = int.TryParse(args[3], CultureInfo.InvariantCulture, out var seedValue) && seedValue > 0 
+                                                ? seedValue 
+                                                : default(int);
+                                            if (s3Value > 0)
+                                                seed = s3Value;
+                                        }
+                                    }
+                                }
+
                                 var trainCommand = new TrainCommand();
                                 await trainCommand.TrainAsync(
-                                    network: args[1],
-                                    games: int.Parse(args[2] ?? "20000", CultureInfo.InvariantCulture),
-                                    saveName: string.IsNullOrWhiteSpace(args[3]) ? null : args[3],
-                                    seed: int.Parse(args[4] ?? "42", CultureInfo.InvariantCulture),
-                                    learningRate: double.Parse(args[5] ?? "0.01", CultureInfo.InvariantCulture));
+                                    network: network,
+                                    games: games,
+                                    saveName: saveName,
+                                    seed: seed,
+                                    learningRate: learningRate);
                             }
                             catch (Exception ex)
                             {
@@ -80,7 +126,9 @@ namespace GomokuGame.Trainer.MCP
             }
             
             // 3. Анализ CSV-лога: <лог> напрямую (завершается после анализа)
-            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false && args[0].ToLowerInvariant() != "train" && args[0].ToLowerInvariant() != "start" && args[0].ToLowerInvariant() != "stop" && args[0].ToLowerInvariant() != "status" && args[0].ToLowerInvariant() != "help")
+            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false && 
+                args[0].ToLowerInvariant() != "train" && args[0].ToLowerInvariant() != "start" && 
+                args[0].ToLowerInvariant() != "stop" && args[0].ToLowerInvariant() != "status" && args[0].ToLowerInvariant() != "help")
             {
                 var cliAnalyzer = new CliAnalyzer();
                 cliAnalyzer.Analyze(args[0]);
@@ -88,7 +136,8 @@ namespace GomokuGame.Trainer.MCP
             }
             
             // 4. Явная команда анализа: analyze <лог> (завершается после анализа)
-            if (args.Length >= 2 && args[0].ToLowerInvariant() == "analyze" && !string.IsNullOrEmpty(args[1]) && args[0].StartsWith("--", StringComparison.Ordinal) == false)
+            if (args.Length >= 2 && args[0].ToLowerInvariant() == "analyze" && !string.IsNullOrEmpty(args[1]) && 
+                args[0].StartsWith("--", StringComparison.Ordinal) == false)
             {
                 var cliAnalyzer = new CliAnalyzer();
                 cliAnalyzer.Analyze(args[1]);
@@ -96,7 +145,8 @@ namespace GomokuGame.Trainer.MCP
             }
             
             // 5. Команды: start, stop, status, help — завершают после выполнения
-            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false && args[0].ToLowerInvariant() != "analyze" && args[0].ToLowerInvariant() != "train")
+            if (args.Length == 1 && !string.IsNullOrEmpty(args[0]) && args[0].StartsWith("--", StringComparison.Ordinal) == false && 
+                args[0].ToLowerInvariant() != "analyze" && args[0].ToLowerInvariant() != "train")
             {
                 var command = args[0].ToLowerInvariant();
                 
@@ -105,7 +155,7 @@ namespace GomokuGame.Trainer.MCP
                     case "start":
                         if (args.Length < 2)
                         {
-                            Console.WriteLine("Ошибка: Укажите сеть (A/B/C/D/E)");
+                            Console.WriteLine("Ошибка: Укажите сеть");
                         }
                         else
                         {
@@ -114,15 +164,15 @@ namespace GomokuGame.Trainer.MCP
                         break;
 
                     case "stop":
-                        var trainer = new TrainerController();
-                        await trainer.StopTrainingAsync();
+                        var trainer2 = new TrainerController();
+                        await trainer2.StopTrainingAsync();
                         Console.WriteLine("[INFO] Процесс остановлен.");
                         break;
 
                     case "status":
-                        var tr = new TrainerController();
+                        var tr2 = new TrainerController();
                         PrintEnvironmentInfo();
-                        Console.WriteLine($"Текущий статус: {(tr.IsRunning ? "ЗАПУЩЕН" : "ОСТАНОВЛЕН")}");
+                        Console.WriteLine($"Текущий статус: {(tr2.IsRunning ? "ЗАПУЩЕН" : "ОСТАНОВЛЕН")}");
                         break;
 
                     case "help":
@@ -140,7 +190,7 @@ namespace GomokuGame.Trainer.MCP
             }
             
             // 6. Интерактивный режим (пустой запуск — запускается явно пользователем)
-            if (args.Length == 0 && args.All(a => string.IsNullOrWhiteSpace(a)))
+            if (args.Length == 0)
             {
                 await InteractiveMode();
             }
@@ -154,8 +204,7 @@ namespace GomokuGame.Trainer.MCP
               Команды:
                 <лог>                        Автоматически анализировать CSV-лог (завершается после анализа)
                 analyze <лог>               Анализировать CSV-лог с явной командой
-                train <сеть> <партии> [saveName] [seed] [learningRate]  Запустить обучение (A/B/C/D/E, по умолчанию 20000 партий)
-                start <сеть> [партии]       Запустить обучение (устарело, используйте 'train')
+                train <сеть> [партии]       Запустить обучение (ИМЯ СЕТИ, по умолчанию 20000 партий)
                 stop                        Остановить процесс обучения
                 status                      Показать текущий статус и информацию об окружении
                 help / -h                   Показать эту справку
@@ -163,11 +212,55 @@ namespace GomokuGame.Trainer.MCP
               Тестирование:
                 --test                      Запустить тесты CsvLogParser
 
+              Параметры команды train:
+                train <сеть> [партии]           — Обучение с указанным числом партий
+                train <сеть> --games:N          — Количество партий (N)
+                train <сеть> --lr:N             — Learning rate
+                train <сеть> --epsilon:N        — Epsilon для exploration
+                train <сеть> --decay:N          — Decay coefficient
+                train <сеть> --seed:N           — Seed случайных чисел
+                train <сеть> --save:имя         — Имя сохранения сети
+                train <сеть> --mode:A|B|C|D|E   — Режим обучения (LearningMode)
+                train <сеть> --correction:X     — Коррекция ошибок (FULL/ONCE/OFF/ALL)
+                train <сеть> --algorithm:alg    — Алгоритм обучения (standard/league/genetic/bot)
+                train <сеть> --chunk:N          — Размер чанка для обучения
+                train <сеть> --warmup:N         — Warmup партий
+                train <сеть> --snapshotEvery:N  — Снимки каждые N партий
+                train <сеть> --demo:0|1         — Показывать демо игры (по умолчанию 1)
+                train <сеть> --board:N          — Размер доски (по умолчанию 9)
+                train <сеть> --win:N            — Длина победы (по умолчанию 5)
+
               Примеры:
-                dotnet run train D 20000                     — Обучить сеть D на 20,000 партий
-                dotnet run train A 50000 save_A_50k          — Обучить сеть A с сохранением
-                dotnet run analyze logs/baseline_d_20000.txt  — Проанализировать лог
-                dotnet run --test                           — Запустить тесты CsvLogParser
+                # Обучить сеть network_A на 20000 партий в режиме C (по умолчанию)
+                dotnet run train network_A 20000
+                
+                # Обучить сеть topology_test на 50000 партий с именем сохранения
+                dotnet run train topology_test \
+                  --games:50000 \
+                  --lr:0.01 \
+                  --epsilon:0.3 \
+                  --decay:0.995 \
+                  --seed:42 \
+                  --save:topology_50k \
+                  --mode:C \
+                  --correction:FULL
+                
+                # Обучение в режиме B с бесконечным обучением
+                dotnet run train network_B \
+                  --mode:B \
+                  --games:0 \
+                  --lr:0.01
+                
+                # Обучение в режиме E (LTT) с коррекцией OFF
+                dotnet run train network_A \
+                  --mode:E \
+                  --correction:OFF
+                
+                # Анализировать CSV-лог
+                dotnet run analyze tests\baseline_d_20000_permuted.txt
+                
+                # Запустить тесты CsvLogParser
+                dotnet run --test
             ";
             Console.WriteLine(helpText.Trim());
         }
@@ -201,13 +294,12 @@ namespace GomokuGame.Trainer.MCP
                     switch (command)
                     {
                         case "train":
-                            Console.Write("\nВведите сеть (A/B/C/D/E): ");
-                            var network = Console.ReadLine()?.Trim() ?? "D";
+                            Console.Write("\nВведите ИМЯ СЕТИ (например: network_A, topology_test): ");
+                            var network = Console.ReadLine()?.Trim() ?? "network_D";
 
-                            Console.Write("Количество партий (по умолчанию 20000): ");
-                            var gamesInput = Console.ReadLine()?.Trim() ?? "20000";
-                            
-                            int games = int.TryParse(gamesInput, out var g) && g > 0 ? g : 20000;
+                            Console.Write("Количество партий (по умолчанию 20000 или 0 для бесконечно): ");
+                            string gamesInput;
+                            int games = int.TryParse(gamesInput = Console.ReadLine()?.Trim() ?? "", out var g) && g > 0 ? g : 20000;
 
                             Console.Write("Имя сохранения (оставьте пустым для дефолтного): ");
                             var saveName = Console.ReadLine()?.Trim();
@@ -220,7 +312,24 @@ namespace GomokuGame.Trainer.MCP
                             var lrInput = Console.ReadLine()?.Trim() ?? "0.01";
                             double learningRate = double.TryParse(lrInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var lr) ? lr : 0.01;
 
-                            var trainCommand = new TrainCommand();
+                            // Режим обучения (опционально)
+                            Console.Write("Режим обучения A/B/C/D/E (по умолчанию C): ");
+                            var modeInput = Console.ReadLine()?.Trim().ToUpperInvariant();
+                            string learningMode = modeInput != null && Array.Exists(new[] { "A", "B", "C", "D", "E" }, x => x.Equals(modeInput, StringComparison.OrdinalIgnoreCase)) 
+                                ? modeInput : "C";
+
+                            // Коррекция (опционально)
+                            Console.Write("Коррекция FULL/ONCE/OFF/ALL (по умолчанию FULL): ");
+                            var correctionInput = Console.ReadLine()?.Trim().ToUpperInvariant();
+                            string correctionMode = correctionInput != null && Array.Exists(new[] { "FULL", "ONCE", "OFF", "ALL" }, x => x.Equals(correctionInput, StringComparison.OrdinalIgnoreCase))
+                                ? correctionInput : "FULL";
+
+                            var trainCommand = new TrainCommand
+                            {
+                                LearningMode = learningMode,
+                                CorrectionMode = correctionMode
+                            };
+
                             await trainer.TrainAsync(
                                 command: trainCommand,
                                 network: network,
