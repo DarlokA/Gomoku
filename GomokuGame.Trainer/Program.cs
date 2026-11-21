@@ -15,6 +15,7 @@ namespace GomokuGame.Trainer
     public static class Program
     {
         private static readonly object SaveLock = new object();
+        private static ConsoleLogTee? s_logTee;   // активный лог консоли (если задан consolelog:)
 
         public static void Main(string[] args)
         {
@@ -31,6 +32,16 @@ namespace GomokuGame.Trainer
             var tokens = args.Skip(1).ToList();
             var arguments = ParseKeyValueArgs(tokens);
 
+            // Опциональный аргумент consolelog:<путь> — зеркало консоли в файл один к одному
+            if (arguments.TryGetValue("consolelog", out string? logPath) && !string.IsNullOrWhiteSpace(logPath))
+            {
+                s_logTee = ConsoleLogTee.Create(logPath, out string? logError);
+                if (logError != null)
+                    Console.Error.WriteLine(logError); // ошибка не попадёт в лог: файл всё равно не открыт
+            }
+
+            try
+            {
             switch (command.ToLowerInvariant())
             {
                 case "train":
@@ -63,6 +74,12 @@ namespace GomokuGame.Trainer
                         $"!! Неизвестная команда: \"{command}\". " +
                         "Ожидалась train, match или matchlog.");
                     break;
+            }
+            } // конец try
+            finally
+            {
+                s_logTee?.Dispose(); // нормальный выход: закрыть файл, вернуть исходную консоль
+                s_logTee = null;
             }
         }
 
@@ -481,6 +498,7 @@ namespace GomokuGame.Trainer
                         Console.WriteLine("Внимание: последнее состояние НЕ сохранено.");
                     }
                 }
+                s_logTee?.Shutdown(); // дофлешить лог: Environment.Exit не даст выполнить finally
                 Environment.Exit(0);
             };
 
@@ -893,6 +911,100 @@ namespace GomokuGame.Trainer
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "My Games", "GomokuGame", name + ".json");
+        }
+
+        // ==================== КОНСОЛЬНЫЙ ЛОГ (consolelog:<путь>) ====================
+
+        private sealed class ConsoleLogTee : IDisposable
+        {
+            private readonly TextWriter _originalOut;
+            private readonly TextWriter? _originalErr;
+            private readonly StreamWriter _fileWriter;
+            private bool _disposed;
+
+            public static ConsoleLogTee? Create(string path, out string? error)
+            {
+                try
+                {
+                    error = null;
+                    return new ConsoleLogTee(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    error = $"Не удалось открыть файл лога: {path} ({ex.Message})";
+                    return null;
+                }
+            }
+
+            private ConsoleLogTee(string path)
+            {
+                _fileWriter = new StreamWriter(
+                    new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite),
+                    Console.OutputEncoding); // та же кодировка, что и консоль → один к одному
+                _originalOut = Console.Out;
+                _originalErr = Console.Error;
+
+                Console.SetOut(new TeeTextWriter(_originalOut, _fileWriter));
+                Console.SetError(new TeeTextWriter(_originalErr, _fileWriter));
+            }
+
+            // Флеш + закрытие файла (без возврата исходной консоли) — для Ctrl+C
+            public void Shutdown()
+            {
+                if (_disposed) return;
+                try { _fileWriter.Flush(); _fileWriter.Dispose(); }
+                catch { /* процесс всё равно завершается */ }
+                _disposed = true;
+            }
+
+            public void Dispose()
+            {
+                Shutdown();
+                Console.SetOut(_originalOut);
+                if (_originalErr != null) Console.SetError(_originalErr);
+            }
+        }
+
+        private sealed class TeeTextWriter : TextWriter
+        {
+            private readonly TextWriter _primary; // оригинальный поток консоли
+            private readonly TextWriter _mirror;  // файл лога
+
+            public TeeTextWriter(TextWriter primary, TextWriter mirror)
+                : base(primary.Encoding as IFormatProvider ?? CultureInfo.CurrentCulture)
+            {
+                _primary = primary;
+                _mirror = mirror;
+            }
+
+            public override Encoding Encoding => _primary.Encoding;
+
+            public override void Write(char value)
+            {
+                _primary.Write(value);
+                _mirror.Write(value);
+            }
+
+            public override void Write(string? value)
+            {
+                if (value is null) return;
+                _primary.Write(value);
+                _mirror.Write(value);
+            }
+
+            public override void Write(char[] buffer, int index, int count)
+            {
+                _primary.Write(buffer, index, count);
+                _mirror.Write(buffer, index, count);
+            }
+
+            public override void Flush()
+            {
+                _primary.Flush();
+                try { _mirror.Flush(); } catch { /* файл уже закрыт — не страшно */ }
+            }
+
+            // Close() намеренно ничего не делает: исходный поток консоли закрывать нельзя.
         }
     }
 }
