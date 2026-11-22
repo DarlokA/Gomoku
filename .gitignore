@@ -11,3 +11,5 @@
 /GomokuGame.Trainer/Сеть_A_2.txt
 /GomokuGame.Trainer.MCP/logs
 /GomokuGame.Trainer.MCP/tests
+/GomokuGame.Trainer/NuGet/Migrations
+/GomokuGame/NuGet/Migrations
