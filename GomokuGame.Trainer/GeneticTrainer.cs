@@ -233,7 +233,7 @@ namespace GomokuGame.Trainer
 
         private void SaveBestToDisk(Individual best)
         {
-            best.Ai.NetworkPath = Program.GetSavePath(_saveName);
+            best.Ai.NetworkPath = PathHelper.GetSavePath(_saveName);
             best.Ai.Save();
         }
     }

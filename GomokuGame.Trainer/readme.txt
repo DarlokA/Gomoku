@@ -27,6 +27,8 @@ GomokuGame Trainer
 
 		Пример использования E (LTT), без коррекции критического буфера:
 		GomokuGame.Trainer.exe train algorithm:standard board:9 win:5 games:20000 mode:E correction:Off save:network_e
+		GomokuGame.Trainer.exe train algorithm:standard board:15 win:5 games:10 chunk:2 mode:A correction:Full save:network_a_test consolelog:c:\logs\network_a_test.txt
+
 
 Режим 2. train algorithm:league (Игра с замороженным противником. Сеть по состоянию на конец предыдущего чанка)
 			board — размер доски (по умолчанию 9)
