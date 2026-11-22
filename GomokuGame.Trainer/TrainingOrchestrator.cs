@@ -430,13 +430,48 @@ namespace GomokuGame.Trainer
         }
 
         /// <summary>
-        /// Сохраняет чекпоинт атомарно (с использованием lock).
+        /// Сохраняет чекпоинт атомарно в отдельный файл с суффиксом _ep{done}.json
+        /// Использует временный файл и атомарное перемещение для надёжности.
+        /// НЕ перезаписывает основной файл модели, сохраняет ai.NetworkPath.
         /// </summary>
         private static void SaveSnapshotAtomic(AiPlayer ai, string saveName, long done)
         {
-            string checkpointPath = GetSavePath(saveName);
-            ai.NetworkPath = checkpointPath;
-            ai.Save();
+            // Сохраняем в отдельный файл с суффиксом эпохи, не перезаписывая основной путь
+            string checkpointPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "My Games", "GomokuGame", saveName + "_ep" + done + ".json");
+
+            // Вычисляем путь к временному файлу за пределами try/catch
+            string tempPath = checkpointPath + ".tmp";
+
+            try
+            {
+                // Сохраняем модель в текущий путь (через ai.NetworkPath или напрямую)
+                ai.Save();
+
+                // Копируем сохранённую модель в файл с суффиксом эпохи через атомарную запись
+                if (ai.NetworkPath != null)
+                {
+                    File.Copy(ai.NetworkPath, tempPath, overwrite: true);
+                }
+
+                // Атомарное перемещение временного файла в целевой
+                File.Move(tempPath, checkpointPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Ошибка сохранения чекпоинта: {ex.Message}]");
+                try
+                {
+                    // Пытаемся удалить временный файл при ошибке
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+                catch { }
+                throw; // Перебрасываем исключение для обработки вызывающим кодом
+            }
         }
     }
 }
