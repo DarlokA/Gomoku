@@ -13,3 +13,4 @@
 /GomokuGame.Trainer.MCP/tests
 /GomokuGame.Trainer/NuGet/Migrations
 /GomokuGame/NuGet/Migrations
+*.bak
