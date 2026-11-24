@@ -249,6 +249,12 @@ namespace GomokuGame.Trainer
 
                 avg_movies = stats.AverageMovies;
                 lastLoss = stats.LastAverageLoss;
+                double previousLoss = 0;
+                if (ai.RecentLossHistory.Count > 0)
+                {
+                    previousLoss = ai.RecentLossHistory.Skip(ai.RecentLossHistory.Count - 2).FirstOrDefault();
+                }
+                double deltaLoss = previousLoss - lastLoss;
 
                 long done = gamesDoneBeforeThisSession + sessionGames;
 
@@ -261,7 +267,7 @@ namespace GomokuGame.Trainer
 
                 Console.WriteLine(
                     $"{done,12:N0} | {totalXWins,10:N0} {totalOWins,10:N0} {totalDraws,8:N0} | " +
-                    $"{lastLoss,7:F4} | {ai.Epsilon,5:F3} | {totalMissedWins,10:N0} | " +
+                    $"{lastLoss,7:F4} ({deltaLoss,6:+#,##0;-#,##0;0}) | {ai.Epsilon,5:F3} | {totalMissedWins,10:N0} | " +
                     $"{sw.Elapsed.TotalSeconds,7:F1}s | { (after - before).TotalMilliseconds / playedInChunk,6:F1}ms | {avg_movies,6:F1}");
 
                 long deltaCriticalBufferSize = ai.CriticalBuffer.BufferSize - lastCriticalBufferSize;
@@ -326,6 +332,8 @@ namespace GomokuGame.Trainer
                 }
 
                 b++;
+                lastCriticalBufferSize = ai.CriticalBuffer.BufferSize;
+                lastCriticalSamplesLearnedCount = ai.CriticalBuffer.LearnedSamplesCount;
             }
             sw.Stop();
 
