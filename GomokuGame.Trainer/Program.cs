@@ -22,6 +22,17 @@ namespace GomokuGame.Trainer
 
         public static void Main(string[] args)
         {
+            // При запуске с перенаправленным выводом (из UI) консоль по умолчанию
+            // пишет в OEM-кодировке (CP866), а UI читает UTF-8 — русские символы
+            // превращаются в "кракозябры". Для перенаправленного вывода переходим
+            // на UTF-8; интерактивная консоль сохраняет нативную кодировку.
+            try
+            {
+                if (Console.IsOutputRedirected || Console.IsErrorRedirected)
+                    Console.OutputEncoding = System.Text.Encoding.UTF8;
+            }
+            catch { /* не удалось сменить кодировку — работаем как есть */ }
+
             if (args.Length == 0)
             {
                 Console.WriteLine(

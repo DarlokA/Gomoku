@@ -82,7 +82,7 @@
 						<TextBox Width="100" Text="{Binding Seed, UpdateSourceTrigger=PropertyChanged}"/>
 					</StackPanel>
 					<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-						<TextBlock Text="Режим (A-D):" Width="110" VerticalAlignment="Center"/>
+						<TextBlock Text="Режим (A-E):" Width="110" VerticalAlignment="Center"/>
 						<ComboBox Width="100" ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}"/>
 					</StackPanel>
 					<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -98,6 +98,28 @@
 								Visibility="{Binding IsLeagueMode, Converter={StaticResource BoolToVis}}">
 						<TextBlock Text="Snapshot:" Width="110" VerticalAlignment="Center"/>
 						<TextBox Width="100" Text="{Binding SnapshotEvery, UpdateSourceTrigger=PropertyChanged}"/>
+					</StackPanel>
+					<StackPanel Visibility="{Binding IsGeneticMode, Converter={StaticResource BoolToVis}}">
+						<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+							<TextBlock Text="Популяция:" Width="110" VerticalAlignment="Center"/>
+							<TextBox Width="100" Text="{Binding Population, UpdateSourceTrigger=PropertyChanged}"/>
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+							<TextBlock Text="Элита:" Width="110" VerticalAlignment="Center"/>
+							<TextBox Width="100" Text="{Binding EliteCount, UpdateSourceTrigger=PropertyChanged}"/>
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+							<TextBlock Text="Мутация σ:" Width="110" VerticalAlignment="Center"/>
+							<TextBox Width="100" Text="{Binding MutationSigma, UpdateSourceTrigger=PropertyChanged}"/>
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+							<TextBlock Text="Пар на пару:" Width="110" VerticalAlignment="Center"/>
+							<TextBox Width="100" Text="{Binding GamesPerPair, UpdateSourceTrigger=PropertyChanged}"/>
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+							<TextBlock Text="Циклов:" Width="110" VerticalAlignment="Center"/>
+							<TextBox Width="100" Text="{Binding Cycles, UpdateSourceTrigger=PropertyChanged}"/>
+						</StackPanel>
 					</StackPanel>
 					<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
 						<TextBlock Text="Алгоритм:" Width="110" VerticalAlignment="Center"/>

@@ -16,8 +16,8 @@ namespace GomokuGame.ViewModels
         private readonly GameSettings _settings;
         private readonly TrainerRunner _runner = new();
 
-        public List<string> Modes { get; } = new() { "A", "B", "C", "D" };
-        public List<string> Algorithms { get; } = new() { "standard", "bot", "league" };
+        public List<string> Modes { get; } = new() { "A", "B", "C", "D", "E" };
+        public List<string> Algorithms { get; } = new() { "standard", "bot", "league", "genetic" };
         public List<string> CorrectionModes { get; } = new() { "FULL", "ONCE", "OFF", "ALL" };
         public List<string> AvailableNetworks { get; }
 
@@ -103,6 +103,22 @@ namespace GomokuGame.ViewModels
         private bool _showDemo = true;
         public bool ShowDemo { get => _showDemo; set { if (SetProperty(ref _showDemo, value)) UpdatePreview(); } }
 
+        // --- Genetic-параметры ---
+        private int _population = 8;
+        public int Population { get => _population; set { if (SetProperty(ref _population, value)) UpdatePreview(); } }
+
+        private int _eliteCount = 4;
+        public int EliteCount { get => _eliteCount; set { if (SetProperty(ref _eliteCount, value)) UpdatePreview(); } }
+
+        private double _mutationSigma = 0.05;
+        public double MutationSigma { get => _mutationSigma; set { if (SetProperty(ref _mutationSigma, value)) UpdatePreview(); } }
+
+        private int _gamesPerPair = 100;
+        public int GamesPerPair { get => _gamesPerPair; set { if (SetProperty(ref _gamesPerPair, value)) UpdatePreview(); } }
+
+        private int _cycles = 3;
+        public int Cycles { get => _cycles; set { if (SetProperty(ref _cycles, value)) UpdatePreview(); } }
+
 
         private int _chunk = 500;
         public int Chunk { get => _chunk; set { if (SetProperty(ref _chunk, value)) UpdatePreview(); } }
@@ -122,10 +138,14 @@ namespace GomokuGame.ViewModels
                 if (SetProperty(ref _algorithm, value))
                 {
                     OnPropertyChanged(nameof(IsLeagueMode));
+                    OnPropertyChanged(nameof(IsGeneticMode));
                     UpdatePreview();
                 }
             }
         }
+
+        public bool IsGeneticMode => Algorithm == "genetic";
+        public bool IsLeagueMode => Algorithm == "league";
 
         private string _correctionMode = "FULL";
         public string CorrectionMode
@@ -137,8 +157,6 @@ namespace GomokuGame.ViewModels
                     UpdatePreview();
             }
         }
-
-        public bool IsLeagueMode => Algorithm == "league";
 
         // --- Match-параметры ---
         private string _fileA = "network";
@@ -231,32 +249,48 @@ namespace GomokuGame.ViewModels
 
             if (IsMatchMode)
             {
-                // match [boardSize] [winLength] [games] [fileA] [fileB]
+                // match board:9 win:5 games:1000 x:network o:network
                 args.Add("match");
-                args.Add(BoardSize.ToString(ci));
-                args.Add(WinLength.ToString(ci));
-                args.Add(IsInfinite ? "0" : Games.ToString(ci));
-                args.Add(FileA);
-                args.Add(FileB);
+                args.Add($"board:{BoardSize}");
+                args.Add($"win:{WinLength}");
+                args.Add($"games:{(IsInfinite ? 0 : Games)}");
+                args.Add($"x:{FileA}");
+                args.Add($"o:{FileB}");
             }
             else
             {
-                // [boardSize] [winLength] [games] [lr] [epsilon] [decay] [seed] [mode] [saveName] [showDemo] [algorithm] [chunk] [warmupGames] [snapshotEvery] [correctionMode]
-                args.Add(BoardSize.ToString(ci));
-                args.Add(WinLength.ToString(ci));
-                args.Add(IsInfinite ? "0" : Games.ToString(ci));
-                args.Add(LearningRate.ToString(ci));
-                args.Add(Epsilon.ToString(ci));
-                args.Add(Decay.ToString(ci));
-                args.Add(Seed.ToString(ci));
-                args.Add(Mode);
-                args.Add(string.IsNullOrWhiteSpace(SaveName) ? "network" : SaveName);
-                args.Add(ShowDemo ? "1" : "0");
-                args.Add(Algorithm);
-                args.Add(Chunk.ToString(ci));
-                args.Add(WarmupGames.ToString(ci));
-                args.Add(SnapshotEvery.ToString(ci));
-                args.Add(CorrectionMode);
+                // train algorithm:standard board:9 win:5 games:10000 lr:0.001 ...
+                args.Add("train");
+                args.Add($"algorithm:{Algorithm}");
+                args.Add($"board:{BoardSize}");
+                args.Add($"win:{WinLength}");
+                args.Add($"games:{(IsInfinite ? 0 : Games)}");
+                args.Add($"lr:{LearningRate.ToString(ci)}");
+                args.Add($"epsilon:{Epsilon.ToString(ci)}");
+                args.Add($"decay:{Decay.ToString(ci)}");
+                args.Add($"seed:{Seed}");
+                args.Add($"mode:{Mode}");
+                args.Add($"save:{(string.IsNullOrWhiteSpace(SaveName) ? "network" : SaveName)}");
+                args.Add($"demo:{(ShowDemo ? 1 : 0)}");
+                args.Add($"chunk:{Chunk}");
+                args.Add($"correction:{CorrectionMode}");
+
+                // league-специфичные
+                if (Algorithm == "league")
+                {
+                    args.Add($"warmup:{WarmupGames}");
+                    args.Add($"snapshotEvery:{SnapshotEvery}");
+                }
+
+                // genetic-специфичные
+                if (Algorithm == "genetic")
+                {
+                    args.Add($"population:{Population}");
+                    args.Add($"eliteCount:{EliteCount}");
+                    args.Add($"mutationSigma:{MutationSigma.ToString(ci)}");
+                    args.Add($"gamesPerPair:{GamesPerPair}");
+                    args.Add($"cycles:{Cycles}");
+                }
             }
             return args;
         }
