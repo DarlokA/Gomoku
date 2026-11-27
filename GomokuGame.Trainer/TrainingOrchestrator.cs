@@ -147,6 +147,7 @@ namespace GomokuGame.Trainer
                     catch (Exception ex)
                     {
                         Console.WriteLine($"ОШИБКА при сохранении: {ex.Message}");
+                        Console.WriteLine("Внимание: последнее состояние НЕ сохранено.");
                     }
                 }
                 Program.LogShutdown();
@@ -201,7 +202,6 @@ namespace GomokuGame.Trainer
 
             long lastCriticalBufferSize = ai.CriticalBuffer.BufferSize;
             long lastCriticalSamplesLearnedCount = ai.CriticalBuffer.LearnedSamplesCount;
-            double lastAverageAttemptsToLearn = ai.CriticalBuffer.AverageAttemptsToLearn;
 
             Console.WriteLine($"{"Done",12} | {"X",10} {"O",10} {"Draw",8} | {"Loss",7} | {"Eps",5} | {"Missed",10} | {"Time",8} | {"PerParty time",7} | {"PerParty movies",7}");
             Console.WriteLine(new string('-', 130));
@@ -249,11 +249,12 @@ namespace GomokuGame.Trainer
 
                 avg_movies = stats.AverageMovies;
                 lastLoss = stats.LastAverageLoss;
-                double previousLoss = 0;
-                if (ai.RecentLossHistory.Count > 0)
-                {
-                    previousLoss = ai.RecentLossHistory.Skip(ai.RecentLossHistory.Count - 2).FirstOrDefault();
-                }
+
+                // Дельта к последнему значению из истории (прошлый чанк),
+                // а не ко второму с конца. На первом чанке истории нет — дельта 0.
+                double previousLoss = ai.RecentLossHistory.Count > 0
+                    ? ai.RecentLossHistory[^1]
+                    : lastLoss;
                 double deltaLoss = previousLoss - lastLoss;
 
                 long done = gamesDoneBeforeThisSession + sessionGames;
@@ -272,7 +273,6 @@ namespace GomokuGame.Trainer
 
                 long deltaCriticalBufferSize = ai.CriticalBuffer.BufferSize - lastCriticalBufferSize;
                 long deltaCriticalSamplesLearnedCount = ai.CriticalBuffer.LearnedSamplesCount - lastCriticalSamplesLearnedCount;
-                double deltaAverageAttemptsToLearn = ai.CriticalBuffer.AverageAttemptsToLearn - lastAverageAttemptsToLearn;
 
                 Console.WriteLine(
                     $"CriticalBufferSize {ai.CriticalBuffer.BufferSize,12:N0} {deltaCriticalBufferSize,10:+#,##0;-#,##0;0} | " +
@@ -438,47 +438,39 @@ namespace GomokuGame.Trainer
         }
 
         /// <summary>
-        /// Сохраняет чекпоинт атомарно в отдельный файл с суффиксом _ep{done}.json
-        /// Использует временный файл и атомарное перемещение для надёжности.
-        /// НЕ перезаписывает основной файл модели, сохраняет ai.NetworkPath.
+        /// Сохраняет чекпоинт атомарно в отдельный файл {saveName}_ep{done}.json:
+        /// модель пишется во временный файл, затем он атомарно перемещается на место снимка.
+        /// Основной файл модели при этом не перезаписывается, ai.NetworkPath восстанавливается.
+        /// Ошибка снимка не прерывает обучение.
         /// </summary>
         private static void SaveSnapshotAtomic(AiPlayer ai, string saveName, long done)
         {
-            // Сохраняем в отдельный файл с суффиксом эпохи, не перезаписывая основной путь
-            string checkpointPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "My Games", "GomokuGame", saveName + "_ep" + done + ".json");
+            string finalPath = GetSavePath($"{saveName}_ep{done}");
+            string tempPath = finalPath + ".tmp";
 
-            // Вычисляем путь к временному файлу за пределами try/catch
-            string tempPath = checkpointPath + ".tmp";
-
-            try
+            lock (SaveLock)
             {
-                // Сохраняем модель в текущий путь (через ai.NetworkPath или напрямую)
-                ai.Save();
-
-                // Копируем сохранённую модель в файл с суффиксом эпохи через атомарную запись
-                if (ai.NetworkPath != null)
-                {
-                    File.Copy(ai.NetworkPath, tempPath, overwrite: true);
-                }
-
-                // Атомарное перемещение временного файла в целевой
-                File.Move(tempPath, checkpointPath);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Ошибка сохранения чекпоинта: {ex.Message}]");
+                string? originalPath = ai.NetworkPath;
                 try
                 {
-                    // Пытаемся удалить временный файл при ошибке
+                    ai.NetworkPath = tempPath;
+                    ai.Save();
+
+                    File.Move(tempPath, finalPath, overwrite: true);
+                    Console.WriteLine($"  Checkpoint snapshot saved: {finalPath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"  ОШИБКА снимка на {done:N0}: {ex.Message}");
                     if (File.Exists(tempPath))
                     {
-                        File.Delete(tempPath);
+                        try { File.Delete(tempPath); } catch { }
                     }
                 }
-                catch { }
-                throw; // Перебрасываем исключение для обработки вызывающим кодом
+                finally
+                {
+                    ai.NetworkPath = originalPath;
+                }
             }
         }
     }

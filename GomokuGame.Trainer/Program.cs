@@ -1,14 +1,8 @@
 using GomokuGame.AI;
-using GomokuGame.Models;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
-using static GomokuGame.AI.AiPlayer;
-using GomokuGame.AI.Configuration;
 using static GomokuGame.Trainer.ArgumentParser;
 using static GomokuGame.Trainer.TrainingArgumentsParser;
 using static GomokuGame.Trainer.MatchArgumentsParser;
@@ -19,7 +13,6 @@ namespace GomokuGame.Trainer
 {
     public static class Program
     {
-        private static readonly object SaveLock = new object();
         private static ConsoleLogTee? s_logTee;   // активный лог консоли (если задан consolelog:)
 
         public static void LogShutdown()
@@ -93,86 +86,6 @@ namespace GomokuGame.Trainer
             }
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        private static void RunGeneticTraining(
-            TrainingArguments arguments)
-        {
-            GeneticTrainingArguments options = arguments.Genetic;
-
-            int boardSize = arguments.Game.BoardSize;
-            int winLength = arguments.Game.WinLength;
-            int chunk = arguments.Chunk;
-            if (chunk <= 0)
-            {
-                Console.WriteLine("Размер чанка должен быть больше нуля.");
-                return;
-            }
-
-            string saveName = arguments.SaveName;
-            LearningMode trainingMode = arguments.Mode;
-
-            int population = options.Population;
-            int eliteCount = options.EliteCount;
-            double mutationSigma = options.MutationSigma;
-            int gamesPerPair = options.GamesPerPair;
-            int maxCycles = options.MaxCycles;
-            bool infiniteCycles = maxCycles <= 0;
-
-            Console.WriteLine("=== GomokuGame Trainer / TRAIN (genetic) ===");
-            Console.WriteLine($"Board:         {boardSize}x{boardSize}");
-            Console.WriteLine($"Win len:       {winLength}");
-            Console.WriteLine($"Chunk games:   {chunk}");
-            Console.WriteLine($"Population:    {population}");
-            Console.WriteLine($"Elite count:   {eliteCount}");
-            Console.WriteLine($"Mutation sigma:{mutationSigma}");
-            Console.WriteLine($"Training mode: {trainingMode}");
-            Console.WriteLine($"Games/pair:    {gamesPerPair}");
-            Console.WriteLine($"Cycles:        {(infiniteCycles ? "∞ (стоп — Ctrl+C)" : maxCycles.ToString())}");
-            Console.WriteLine($"Save as:       {saveName}.json");
-            Console.WriteLine();
-
-            string? existingPath = File.Exists(GetSavePath(saveName)) ? GetSavePath(saveName) : null;
-
-            var trainer = new GeneticTrainer(population, eliteCount, mutationSigma,
-                gamesPerPair, boardSize, winLength, chunk, trainingMode, saveName);
-
-            trainer.InitializePopulation(existingPath);
-
-            int cycle = 0;
-            while (infiniteCycles || cycle < maxCycles)
-            {
-                var stop_watch = Stopwatch.StartNew();
-                trainer.RunChunkCycle();
-                stop_watch.Stop();
-
-                var best = trainer.GetBest();
-                Console.WriteLine(
-                    $"Cycle {cycle,6:N0} | best score {best.Score,6:F1} | " +
-                    $"W/D/L {best.Wins}/{best.Draws}/{best.Losses} | time {stop_watch.Elapsed.TotalSeconds:F1}s");
-
-                cycle++;
-            }
-
-            if (!infiniteCycles)
-                Console.WriteLine($"=== Готово: {maxCycles} циклов эволюции пройдено ===");
-        }
-
-
         // ============ MATCH ============
 
         private static void RunMatch(MatchArguments arguments)
@@ -183,16 +96,8 @@ namespace GomokuGame.Trainer
             string fileX = arguments.FileX;
             string fileO = arguments.FileO;
 
-            var aiX = AiPlayer.LoadOrCreate(
-    PathHelper.GetSavePath(fileX),
-    1);
-aiX.Epsilon = 0.4;
-aiX.UseRotatingEvaluation = false;
-            var aiO = AiPlayer.LoadOrCreate(
-    PathHelper.GetSavePath(fileO),
-    2);
-aiO.Epsilon = 0.4;
-aiO.UseRotatingEvaluation = false;
+            var aiX = LoadOrRandom(fileX, seed: 1);
+            var aiO = LoadOrRandom(fileO, seed: 2);
 
 
             Console.WriteLine("=== GomokuGame Trainer / MATCH ===");
@@ -229,16 +134,8 @@ aiO.UseRotatingEvaluation = false;
             string? logFile = arguments.LogFile;
             double epsilon = arguments.Epsilon;
 
-            var aiX = AiPlayer.LoadOrCreate(
-    PathHelper.GetSavePath(fileX),
-    1);
-aiX.Epsilon = 0.4;
-aiX.UseRotatingEvaluation = false;
-            var aiO = AiPlayer.LoadOrCreate(
-    PathHelper.GetSavePath(fileO),
-    2);
-aiO.Epsilon = 0.4;
-aiO.UseRotatingEvaluation = false;
+            var aiX = LoadOrRandom(fileX, seed: 1);
+            var aiO = LoadOrRandom(fileO, seed: 2);
             aiX.Epsilon = epsilon;
             aiO.Epsilon = epsilon;
 
@@ -261,13 +158,34 @@ aiO.UseRotatingEvaluation = false;
             Console.WriteLine($"Winner: {result.Winner}, moves: {result.Moves}");
         }
 
-        // ============ HELPERS (оставлено для матчей) ============
-
-        public static string GetSavePath(string name)
+        /// <summary>
+        /// Загружает сеть по имени; "random" или отсутствующий файл дают
+        /// случайного игрока (Epsilon = 1.0), как было до рефакторинга.
+        /// </summary>
+        private static AiPlayer LoadOrRandom(string name, int seed)
         {
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "My Games", "GomokuGame", name + ".json");
+            if (name.Equals("random", StringComparison.OrdinalIgnoreCase))
+            {
+                var ai = AiPlayer.CreateFresh(seed);
+                ai.Epsilon = 1.0;
+                ai.UseRotatingEvaluation = false;   // random — без TTA
+                return ai;
+            }
+
+            string path = GetSavePath(name);
+            if (!File.Exists(path))
+            {
+                Console.WriteLine($"!! File not found: {path}, using random");
+                var ai = AiPlayer.CreateFresh(seed);
+                ai.Epsilon = 1.0;
+                ai.UseRotatingEvaluation = false;
+                return ai;
+            }
+
+            var loaded = AiPlayer.LoadOrCreate(path, seed);
+            loaded.Epsilon = 0.4;
+            loaded.UseRotatingEvaluation = false;   // TTA при матчах
+            return loaded;
         }
     }
 
