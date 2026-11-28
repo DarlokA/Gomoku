@@ -175,7 +175,7 @@ namespace GomokuGame.AI
                     // буфер должен оставаться редким, а не раздуваться обычными ходами.
                     var allOrientationStates = new double[4][];
                     for (int ori = 0; ori < 4; ori++)
-                        allOrientationStates[ori] = StateEncoder.Encode(board, sr, sc, current, ori);
+                        allOrientationStates[ori] = ai.EncodeState(board, sr, sc, current, ori);
 
                     bool isCritical = weight >= 5.0;
 
